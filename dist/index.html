@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080b0f">
+  <title>OPERATOR — DX7 Patch Forge</title>
+  <meta name="description" content="Describe a sound and export a valid Yamaha DX7 single-voice SysEx patch.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand"><span class="brand-mark">OP</span><span>OPERATOR</span></div>
+      <div class="status"><i></i> DX7 VOICE ENGINE</div>
+    </header>
+
+    <section class="workbench">
+      <div class="composer">
+        <p class="eyebrow">01 / SOUND DESCRIPTION</p>
+        <h1>Turn words into<br><em>frequency modulation.</em></h1>
+        <label for="prompt">Describe the patch</label>
+        <textarea id="prompt" maxlength="240" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Cold glass bells, distant and luminous, with a slow attack and a long metallic decay</textarea>
+        <div class="suggestions" aria-label="Sound suggestions">
+          <button data-prompt="Warm electric piano, soft mallet attack, mellow body and gentle tremolo">Warm EP</button>
+          <button data-prompt="Aggressive industrial bass, distorted metal edge, short and percussive">Industrial bass</button>
+          <button data-prompt="Airy evolving pad, shimmering harmonics, very slow bloom and wide vibrato">Airy pad</button>
+          <button data-prompt="Bright wooden marimba, dry, plucky and percussive with a short decay">Marimba</button>
+        </div>
+        <div class="controls">
+          <label>Variation <input id="seed" type="range" min="1" max="99" value="42"><output id="seedOut">42</output></label>
+          <button id="generate" class="primary">Forge patch <span>↗</span></button>
+        </div>
+      </div>
+
+      <aside class="result" aria-live="polite">
+        <div class="result-head">
+          <div><p class="eyebrow">02 / GENERATED VOICE</p><input id="patchName" value="GLASSBLOOM" maxlength="10" aria-label="Patch name"></div>
+          <div class="valid"><span>✓</span> SYSEX VALID</div>
+        </div>
+
+        <div class="algorithm-card">
+          <div class="algo-meta"><span>ALGORITHM</span><strong id="algoNum">05</strong></div>
+          <svg id="algoSvg" viewBox="0 0 440 150" role="img" aria-label="FM operator algorithm"></svg>
+        </div>
+
+        <div class="metrics">
+          <div><span>CHARACTER</span><strong id="character">GLASSY · EVOLVING</strong></div>
+          <div><span>FEEDBACK</span><strong id="feedback">2 / 7</strong></div>
+          <div><span>TRANSPOSE</span><strong id="transpose">+0</strong></div>
+        </div>
+
+        <div class="operators" id="operators"></div>
+
+        <div class="download-row">
+          <div><span class="file-icon">SYX</span><p><strong id="fileName">GLASSBLOOM.syx</strong><small>163 bytes · DX7 single voice</small></p></div>
+          <button id="download">Download .syx <span>↓</span></button>
+        </div>
+        <p class="compat">Yamaha DX7 / DX7II · Dexed · compatible SysEx librarians</p>
+      </aside>
+    </section>
+
+    <footer><span>DESCRIPTIVE FM SYNTHESIS</span><span>DATA STAYS IN YOUR BROWSER</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
