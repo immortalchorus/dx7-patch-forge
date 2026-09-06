@@ -9,3 +9,8 @@
 #interpretNote{color:#6f7c86;font-size:11px;line-height:1.5;margin:10px 0 0}
 .single-download{display:block;margin:10px 0 0 auto;border:0;background:transparent;color:var(--muted);font:10px "DM Mono";text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .single-download:hover{color:var(--cyan)}
+.alternate-downloads{display:flex;justify-content:flex-end;gap:18px;flex-wrap:wrap}
+#nativeDownload{background:var(--cyan);border:0;padding:14px 18px;font-weight:700;cursor:pointer}
+#nativeDownload:hover{filter:brightness(1.1);transform:translateY(-1px)}
+#download.single-download{display:block;margin:10px 0 0 auto;border:0;background:transparent;color:var(--muted);padding:0;font:10px "DM Mono";font-weight:400;text-decoration:underline;text-underline-offset:3px}
+#download.single-download:hover{color:var(--cyan);filter:none;transform:none}
