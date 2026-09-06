@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="interpretation.css">
 </head>
 <body>
   <main class="shell">
@@ -33,6 +34,11 @@
         <div class="controls">
           <label>Variation <input id="seed" type="range" min="1" max="99" value="42"><output id="seedOut">42</output></label>
           <button id="generate" class="primary">Forge patch <span>↗</span></button>
+        </div>
+        <div class="interpretation">
+          <div class="interpret-head"><span>INTERPRETATION</span><small id="matchCount">0 sound cues found</small></div>
+          <div id="traitChips" class="trait-chips"></div>
+          <p id="interpretNote">The voice engine maps your language onto perceptual synthesis dimensions.</p>
         </div>
       </div>
 
