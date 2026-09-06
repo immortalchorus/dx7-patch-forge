@@ -7,3 +7,5 @@
 .trait-chip i{display:block;width:26px;height:3px;background:#24313b;position:relative}
 .trait-chip i:after{content:"";display:block;width:var(--level);height:3px;background:var(--cyan)}
 #interpretNote{color:#6f7c86;font-size:11px;line-height:1.5;margin:10px 0 0}
+.single-download{display:block;margin:10px 0 0 auto;border:0;background:transparent;color:var(--muted);font:10px "DM Mono";text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.single-download:hover{color:var(--cyan)}
