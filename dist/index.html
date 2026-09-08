@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080b0f">
   <title>OPERATOR — DX7 Patch Forge</title>
-  <meta name="description" content="Describe a sound and export a valid Yamaha DX7 single-voice SysEx patch.">
+  <meta name="description" content="Describe a sound and export a curated DX7-style patch for SpaceAge 80s FM or Yamaha SysEx.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -26,12 +26,12 @@
         <label for="prompt">Describe the patch</label>
         <textarea id="prompt" maxlength="240" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Cold glass bells, distant and luminous, with a slow attack and a long metallic decay</textarea>
         <div class="suggestions" aria-label="Sound suggestions">
-          <button data-prompt="Warm expressive analog lead with gentle delayed vibrato">Sassy lead</button>
-          <button data-prompt="Bright responsive neon polysynth, shimmering and animated">Neon synth</button>
-          <button data-prompt="Aggressive electric bass, dark industrial growl, hard and punchy">Aggro bass</button>
-          <button data-prompt="Ancient ceremonial atmosphere, glassy, meditative and slowly blooming">Temple atmosphere</button>
-          <button data-prompt="Snappy percussive slap bass with a hard metallic funk attack">Slap bass</button>
-          <button data-prompt="Mysterious magical fantasy effect, sparkling and otherworldly">Magical effect</button>
+          <button data-prompt="Warm touch-sensitive Wurlitzer electric piano, soft when played gently and bright when played hard">Dynamic Wurlitzer</button>
+          <button data-prompt="Hollow evolving string bell with a slow harmonic wash and transparent chime attack">Evolving bell</button>
+          <button data-prompt="Bright cutting funky twang with metallic thump, plucked bass body and silky sustain">Funkmaster</button>
+          <button data-prompt="Stable full synth, warm and muted at low velocity but expressive and brassy when played hard">Full synth</button>
+          <button data-prompt="Warm cinematic analog Berlin bass, soft, focused and deep">Berlin bass</button>
+          <button data-prompt="Short transparent Angelglass bell, delicate, glossy and atmospheric">Angelglass</button>
         </div>
         <div class="controls">
           <label>Variation <input id="seed" type="range" min="1" max="99" value="42"><output id="seedOut">42</output></label>
@@ -78,5 +78,6 @@
     <footer><span>DESCRIPTIVE FM SYNTHESIS</span><span>DATA STAYS IN YOUR BROWSER</span></footer>
   </main>
   <script src="app.js"></script>
+  <script src="emm-engine.js"></script>
 </body>
 </html>
