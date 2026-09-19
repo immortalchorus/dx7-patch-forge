@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080b0f">
   <title>OPERATOR — DX7 Patch Forge</title>
-  <meta name="description" content="Describe a sound and export a curated DX7-style patch for SpaceAge 80s FM or Yamaha SysEx.">
+  <meta name="description" content="Describe a sound, hear it, and export a DX7 voice for SpaceAge 80s FM, Dexed or Yamaha hardware.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="interpretation.css">
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <main class="shell">
     <header>
       <div class="brand"><span class="brand-mark">OP</span><span>OPERATOR</span></div>
-      <div class="status"><i></i> DX7 VOICE ENGINE</div>
+      <div class="status"><i id="statusDot"></i> <span id="statusText">DX7 VOICE ENGINE</span></div>
     </header>
 
     <section class="workbench">
@@ -24,60 +24,84 @@
         <p class="eyebrow">01 / SOUND DESCRIPTION</p>
         <h1>Turn words into<br><em>frequency modulation.</em></h1>
         <label for="prompt">Describe the patch</label>
-        <textarea id="prompt" maxlength="240" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Cold glass bells, distant and luminous, with a slow attack and a long metallic decay</textarea>
+        <textarea id="prompt" maxlength="300" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Cold glass bells, distant and luminous, with a slow attack and a long metallic decay</textarea>
         <div class="suggestions" aria-label="Sound suggestions">
           <button data-prompt="Warm touch-sensitive Wurlitzer electric piano, soft when played gently and bright when played hard">Dynamic Wurlitzer</button>
-          <button data-prompt="Hollow evolving string bell with a slow harmonic wash and transparent chime attack">Evolving bell</button>
-          <button data-prompt="Bright cutting funky twang with metallic thump, plucked bass body and silky sustain">Funkmaster</button>
-          <button data-prompt="Stable full synth, warm and muted at low velocity but expressive and brassy when played hard">Full synth</button>
-          <button data-prompt="Warm cinematic analog Berlin bass, soft, focused and deep">Berlin bass</button>
-          <button data-prompt="Short transparent Angelglass bell, delicate, glossy and atmospheric">Angelglass</button>
+          <button data-prompt="Classic bright 80s DX tine electric piano with a glassy bell attack">80s tine EP</button>
+          <button data-prompt="Breathy flute with gentle delayed vibrato">Breathy flute</button>
+          <button data-prompt="Bright punchy brass stab">Brass stab</button>
+          <button data-prompt="Dark evolving pad with a very slow attack and a long release">Dark pad</button>
+          <button data-prompt="Deep round finger bass, short and punchy">Finger bass</button>
+          <button data-prompt="Plucky metallic kalimba">Kalimba</button>
+          <button data-prompt="Aggressive distorted sync lead">Sync lead</button>
         </div>
         <div class="controls">
           <label>Variation <input id="seed" type="range" min="1" max="99" value="42"><output id="seedOut">42</output></label>
           <button id="generate" class="primary">Forge patch <span>↗</span></button>
         </div>
         <div class="interpretation">
-          <div class="interpret-head"><span>INTERPRETATION</span><small id="matchCount">0 sound cues found</small></div>
-          <div id="traitChips" class="trait-chips"></div>
-          <p id="interpretNote">The voice engine maps your language onto perceptual synthesis dimensions.</p>
+          <div class="interpret-head"><span>INTERPRETATION</span><small id="matchCount">—</small></div>
+          <div id="cueChips" class="trait-chips"></div>
+          <p id="interpretNote">Instrument words choose a starting voice; describing words set measurable targets for brightness, attack, decay, release, tuning and movement.</p>
         </div>
       </div>
 
       <aside class="result" aria-live="polite">
         <div class="result-head">
-          <div><p class="eyebrow">02 / GENERATED VOICE</p><input id="patchName" value="GLASSBLOOM" maxlength="10" aria-label="Patch name"></div>
-          <div class="valid"><span>✓</span> NATIVE + SYSEX VALID</div>
+          <div><p class="eyebrow">02 / GENERATED VOICE</p><input id="patchName" value="" maxlength="10" aria-label="Patch name" spellcheck="false"></div>
+          <div class="valid" id="sourceBadge">—</div>
+        </div>
+
+        <div class="audition">
+          <div class="audition-head">
+            <span>AUDITION</span>
+            <div class="audition-controls">
+              <button id="octDown" aria-label="Octave down">−</button><output id="octOut">C3</output><button id="octUp" aria-label="Octave up">+</button>
+              <label>VEL <input id="velocity" type="range" min="20" max="127" value="100"></label>
+            </div>
+          </div>
+          <div id="keyboard" class="keyboard" aria-label="Preview keyboard"></div>
+          <small class="hint">Click or use A W S E D F T G Y H U J K. Preview is an approximation of the DX7; your synth has the final say.</small>
         </div>
 
         <div class="algorithm-card">
-          <div class="algo-meta"><span>ALGORITHM</span><strong id="algoNum">05</strong></div>
-          <svg id="algoSvg" viewBox="0 0 440 150" role="img" aria-label="FM operator algorithm"></svg>
+          <div class="algo-meta"><span>ALGORITHM</span><strong id="algoNum">--</strong></div>
+          <svg id="algoSvg" viewBox="0 0 440 170" role="img" aria-label="FM operator algorithm"></svg>
         </div>
 
         <div class="metrics">
-          <div><span>CHARACTER</span><strong id="character">GLASSY · EVOLVING</strong></div>
-          <div><span>FEEDBACK</span><strong id="feedback">2 / 7</strong></div>
-          <div><span>TRANSPOSE</span><strong id="transpose">+0</strong></div>
+          <div><span>FAMILY</span><strong id="character">—</strong></div>
+          <div><span>FEEDBACK</span><strong id="feedback">—</strong></div>
+          <div><span>TRANSPOSE</span><strong id="transpose">—</strong></div>
         </div>
 
         <div class="operators" id="operators"></div>
 
+        <div class="why">
+          <div class="interpret-head"><span>WHY IT SOUNDS LIKE THIS</span></div>
+          <p id="whyText"></p>
+          <table id="measureTable" class="measure"></table>
+        </div>
+
+        <div class="alternates">
+          <div class="interpret-head"><span>OTHER CANDIDATES</span><small>click to audition</small></div>
+          <div id="alternates" class="alt-list"></div>
+        </div>
+
         <div class="download-row">
-          <div><span class="file-icon">FM</span><p><strong id="fileName">GLASSBLOOM.ssynth</strong><small>Native single patch · SpaceAge 80s FM</small></p></div>
+          <div><span class="file-icon">FM</span><p><strong id="fileName">—</strong><small>Native single patch · SpaceAge 80s FM</small></p></div>
           <button id="nativeDownload">Download .ssynth <span>↓</span></button>
         </div>
         <div class="alternate-downloads">
-          <button id="download" class="single-download">Download DX7 32-voice cartridge (.syx)</button>
-          <button id="singleDownload" class="single-download">Download DX7 163-byte single voice (.syx)</button>
+          <button id="download" class="single-download">DX7 32-voice cartridge (.syx): this voice + 31 variations</button>
+          <button id="singleDownload" class="single-download">DX7 single voice (.syx, 163 bytes)</button>
         </div>
-        <p class="compat">SpaceAge 80s FM · Yamaha DX7 / DX7II · Dexed</p>
+        <p class="compat">SpaceAge 80s FM · Yamaha DX7 / DX7II / TX802 · Dexed</p>
       </aside>
     </section>
 
     <footer><span>DESCRIPTIVE FM SYNTHESIS</span><span>DATA STAYS IN YOUR BROWSER</span></footer>
   </main>
-  <script src="app.js"></script>
-  <script src="emm-engine.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

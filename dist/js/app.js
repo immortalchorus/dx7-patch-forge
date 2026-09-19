@@ -1,0 +1,273 @@
+import { ALGORITHMS, operatorRoles, opRatio, opFixedHz, cleanName, singleVoiceSysex, cartridgeSysex } from "./dx7.js";
+import { ssynthFile } from "./ssynth.js";
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+const state = { response: null, selected: 0, request: 0, lastSignature: "", generatedName: "" };
+const current = () => state.response?.results[state.selected];
+
+// ---------------------------------------------------------------- design worker
+const worker = new Worker(new URL("./design-worker.js", import.meta.url), { type: "module" });
+worker.onmessage = ({ data }) => {
+  if (data.id !== state.request) return;
+  setBusy(false);
+  if (data.error) {
+    $("#statusText").textContent = "DESIGN FAILED";
+    console.error(data.error);
+    return;
+  }
+  state.response = data;
+  state.selected = 0;
+  show();
+};
+worker.onerror = (e) => {
+  setBusy(false);
+  $("#statusText").textContent = "DESIGN FAILED";
+  console.error(e);
+};
+
+function setBusy(busy) {
+  $("#generate").disabled = busy;
+  document.body.classList.toggle("busy", busy);
+  $("#statusText").textContent = busy ? "DESIGNING + MEASURING…" : "DX7 VOICE ENGINE";
+}
+
+function forge(autoVary = false) {
+  const prompt = $("#prompt").value.trim();
+  let variation = +$("#seed").value;
+  if (autoVary && prompt + "|" + variation === state.lastSignature) {
+    variation = (variation % 99) + 1;
+    $("#seed").value = $("#seedOut").value = variation;
+  }
+  state.lastSignature = prompt + "|" + variation;
+  state.request++;
+  setBusy(true);
+  worker.postMessage({ id: state.request, prompt, variation });
+}
+
+// ---------------------------------------------------------------- rendering the result
+function patchName() {
+  return cleanName($("#patchName").value.trim() || current()?.name || "FORGE");
+}
+
+function show() {
+  const r = current();
+  const { intent, results } = state.response;
+  const nameField = $("#patchName");
+  if (!nameField.value || nameField.value === state.generatedName) nameField.value = r.name;
+  state.generatedName = r.name;
+  sendVoice();
+
+  const cues = intent.cues;
+  $("#matchCount").textContent = `${cues.length} cue${cues.length === 1 ? "" : "s"} recognised`;
+  $("#cueChips").innerHTML = cues
+    .map((c) => `<span class="trait-chip${c.family ? " family" : ""}"><b>${esc(c.phrase.toUpperCase())}</b>${c.family ? `<em class="tag">${esc(c.family)}</em>` : ""}</span>`)
+    .join("");
+  $("#interpretNote").textContent = cues.length
+    ? "Instrument words chose the starting voice; the others set the targets measured below."
+    : "No familiar sound words found, so the closest general-purpose voice was used. Try naming an instrument or describing brightness, attack, length or movement.";
+
+  const v = r.voice;
+  $("#sourceBadge").textContent = `FROM ${r.source.name}`;
+  $("#sourceBadge").title = `${r.source.origin} · ${r.source.family}`;
+  $("#algoNum").textContent = String(v.algorithm).padStart(2, "0");
+  $("#feedback").textContent = `${v.feedback} / 7`;
+  const semis = v.transpose - 24;
+  $("#transpose").textContent = `${semis >= 0 ? "+" : ""}${semis} st`;
+  $("#character").textContent = r.source.family.toUpperCase();
+  drawAlgorithm(v);
+  drawOperators(v);
+  drawWhy(r);
+  drawAlternates(results);
+  updateFileName();
+}
+
+function drawOperators(v) {
+  const roles = operatorRoles(v.algorithm);
+  $("#operators").innerHTML = v.ops
+    .map((o, i) => {
+      const c = roles[i].carrier;
+      const freq = o.mode ? `${opFixedHz(o).toFixed(opFixedHz(o) < 10 ? 2 : 0)}Hz` : opRatio(o).toFixed(2).replace(/\.?0+$/, "");
+      return `<div class="op ${c ? "carrier" : ""} ${o.level ? "" : "silent"}"><span>OP ${i + 1} · ${c ? "C" : "M"}</span><strong>${freq}</strong><small>LVL ${o.level}${o.detune !== 7 ? ` · DET ${o.detune - 7 > 0 ? "+" : ""}${o.detune - 7}` : ""}</small></div>`;
+    })
+    .join("");
+}
+
+function drawAlgorithm(v) {
+  const alg = ALGORITHMS[v.algorithm];
+  const roles = operatorRoles(v.algorithm);
+  // Tree layout: each modulator hangs under its lowest-numbered target.
+  const parent = {};
+  for (const [from, to] of alg.edges) if (!(from in parent) || to < parent[from]) parent[from] = to;
+  const children = (op) => Object.keys(parent).map(Number).filter((m) => parent[m] === op).sort((a, b) => a - b);
+  const x = {};
+  let col = 0;
+  const place = (op) => {
+    const kids = children(op);
+    kids.forEach(place);
+    x[op] = kids.length ? kids.reduce((s, k) => s + x[k], 0) / kids.length : col++;
+  };
+  alg.carriers.forEach(place);
+  const maxDepth = Math.max(...roles.map((r) => r.depth));
+  const span = Math.max(1, col - 1);
+  const px = (op) => (col === 1 ? 220 : 50 + (x[op] / span) * 340);
+  const py = (op) => 138 - roles[op - 1].depth * Math.min(56, 116 / Math.max(1, maxDepth));
+  let lines = "";
+  for (const [from, to] of alg.edges)
+    lines += `<line x1="${px(from)}" y1="${py(from) + 16}" x2="${px(to)}" y2="${py(to) - 16}" stroke="#394753" stroke-width="2"/>`;
+  const fb = alg.fb;
+  lines += `<path d="M${px(fb) + 16} ${py(fb)} h12 v-24 h-28 v8" fill="none" stroke="#ff7a45" stroke-width="1.5"/>`;
+  lines += `<line x1="30" y1="162" x2="410" y2="162" stroke="#27313b"/>`;
+  for (const c of alg.carriers) lines += `<line x1="${px(c)}" y1="${py(c) + 16}" x2="${px(c)}" y2="162" stroke="#d6ff4b55" stroke-width="2"/>`;
+  let nodes = "";
+  for (let op = 1; op <= 6; op++) {
+    const carrier = roles[op - 1].carrier;
+    const color = v.ops[op - 1].level ? (carrier ? "#d6ff4b" : "#55dce1") : "#3a454f";
+    nodes += `<circle cx="${px(op)}" cy="${py(op)}" r="16" fill="#111821" stroke="${color}"/><text x="${px(op)}" y="${py(op) + 4}" text-anchor="middle" fill="${color}" font-family="DM Mono" font-size="11">${op}</text>`;
+  }
+  $("#algoSvg").innerHTML = lines + nodes;
+}
+
+const fmtTime = (s) => (s >= 20 ? "sustains" : s >= 1 ? `${s.toFixed(1)} s` : `${Math.round(s * 1000)} ms`);
+function drawWhy(r) {
+  const adj = r.applied.length ? r.applied.join(", ") : "no changes needed";
+  $("#whyText").textContent = `Started from ${r.source.name} (${r.source.origin}, ${r.source.family}), then: ${adj}.`;
+  const rows = [
+    ["Brightness", (f) => `${f.centroid.toFixed(1)}×`, r.targets.centroid && `${r.targets.centroid.toFixed(1)}×`],
+    ["Attack", (f) => fmtTime(f.attack), r.targets.attack && fmtTime(r.targets.attack)],
+    ["Decay (held)", (f) => fmtTime(f.decay), r.targets.decay && fmtTime(r.targets.decay)],
+    ["Release", (f) => (f.release ? fmtTime(f.release) : "—"), r.targets.release && fmtTime(r.targets.release)],
+    ["Inharmonic", (f) => `${Math.round(f.inharm * 100)}%`, ""],
+  ];
+  $("#measureTable").innerHTML =
+    `<tr><th></th><th>START</th><th>TARGET</th><th>RESULT</th></tr>` +
+    rows.map(([label, fmt, target]) => `<tr><td>${label}</td><td>${fmt(r.base)}</td><td>${target || "—"}</td><td>${fmt(r.features)}</td></tr>`).join("");
+}
+
+function drawAlternates(results) {
+  $("#alternates").innerHTML = results
+    .map((r, i) => `<button class="alt ${i === state.selected ? "on" : ""}" data-i="${i}"><b>${esc(r.name)}</b><small>${esc(r.source.name)} · ${esc(r.source.family)}</small></button>`)
+    .join("");
+}
+$("#alternates").onclick = (e) => {
+  const b = e.target.closest(".alt");
+  if (!b) return;
+  state.selected = +b.dataset.i;
+  show();
+};
+
+function updateFileName() {
+  $("#fileName").textContent = patchName().trim().replace(/\s+/g, "_") + ".ssynth";
+}
+
+// ---------------------------------------------------------------- audition
+let audio = null;
+let octave = 4;
+const KEYS = "awsedftgyhujk";
+async function ensureAudio() {
+  if (audio) return audio;
+  const ctx = new AudioContext({ latencyHint: "interactive" });
+  if (!ctx.audioWorklet) throw new Error("This browser cannot run the audio preview.");
+  await ctx.audioWorklet.addModule(new URL("./preview-worklet.js", import.meta.url));
+  const node = new AudioWorkletNode(ctx, "fm-preview", { outputChannelCount: [2] });
+  node.connect(ctx.destination);
+  audio = { ctx, node };
+  sendVoice();
+  return audio;
+}
+function sendVoice() {
+  const r = current();
+  if (audio && r) audio.node.port.postMessage({ type: "voice", voice: r.voice });
+}
+async function noteOn(note) {
+  try {
+    const a = await ensureAudio();
+    if (a.ctx.state !== "running") await a.ctx.resume();
+    a.node.port.postMessage({ type: "on", note, velocity: +$("#velocity").value });
+    document.querySelector(`[data-note="${note}"]`)?.classList.add("down");
+  } catch (err) {
+    $("#statusText").textContent = String(err.message || err).toUpperCase();
+  }
+}
+function noteOff(note) {
+  audio?.node.port.postMessage({ type: "off", note });
+  document.querySelector(`[data-note="${note}"]`)?.classList.remove("down");
+}
+
+function buildKeyboard() {
+  const base = octave * 12 + 12; // octave 4 starts at MIDI 60
+  const black = [1, 3, 6, 8, 10];
+  let html = "";
+  for (let i = 0; i < 25; i++) {
+    const n = base - 12 + i;
+    html += `<div class="key ${black.includes(i % 12) ? "black" : "white"}" data-note="${n}"></div>`;
+  }
+  $("#keyboard").innerHTML = html;
+  $("#octOut").value = `C${octave - 1}`;
+}
+const held = new Map();
+$("#keyboard").addEventListener("pointerdown", (e) => {
+  const k = e.target.closest(".key");
+  if (!k) return;
+  k.setPointerCapture?.(e.pointerId);
+  held.set(e.pointerId, +k.dataset.note);
+  noteOn(+k.dataset.note);
+});
+for (const type of ["pointerup", "pointercancel"])
+  $("#keyboard").addEventListener(type, (e) => {
+    if (held.has(e.pointerId)) noteOff(held.get(e.pointerId)), held.delete(e.pointerId);
+  });
+const typing = () => ["TEXTAREA", "INPUT"].includes(document.activeElement?.tagName) && document.activeElement.type !== "range";
+const down = new Set();
+addEventListener("keydown", (e) => {
+  const i = KEYS.indexOf(e.key.toLowerCase());
+  if (i < 0 || typing() || e.repeat || e.metaKey || e.ctrlKey) return;
+  const n = octave * 12 + i;
+  down.add(n);
+  noteOn(n);
+});
+addEventListener("keyup", (e) => {
+  const i = KEYS.indexOf(e.key.toLowerCase());
+  if (i < 0) return;
+  const n = octave * 12 + i;
+  if (down.delete(n)) noteOff(n);
+});
+$("#octDown").onclick = () => ((octave = Math.max(1, octave - 1)), buildKeyboard());
+$("#octUp").onclick = () => ((octave = Math.min(7, octave + 1)), buildKeyboard());
+
+// ---------------------------------------------------------------- downloads
+function download(bytes, name, type = "application/octet-stream") {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const namedVoice = () => ({ ...current().voice, name: patchName() });
+const stem = () => patchName().trim().replace(/\s+/g, "_") || "FORGE";
+
+$("#nativeDownload").onclick = async () => {
+  if (!current()) return;
+  download(await ssynthFile(namedVoice(), $("#patchName").value.trim() || current().name), stem() + ".ssynth", "application/json");
+};
+$("#singleDownload").onclick = () => current() && download(singleVoiceSysex(namedVoice()), stem() + ".syx");
+$("#download").onclick = () => {
+  if (!current()) return;
+  const voices = [...state.response.cartridge];
+  // Slot 1 is whichever candidate is selected, under the name shown.
+  voices.splice(voices.indexOf(voices.find((v) => v.name === current().voice.name)), 1);
+  voices.unshift(namedVoice());
+  download(cartridgeSysex(voices.slice(0, 32)), stem() + "_cartridge.syx");
+};
+
+// ---------------------------------------------------------------- wiring
+$("#generate").onclick = () => forge(true);
+$("#seed").oninput = (e) => ($("#seedOut").value = e.target.value);
+$("#seed").onchange = () => forge();
+$("#patchName").oninput = updateFileName;
+$("#prompt").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) forge(true);
+});
+document.querySelectorAll("[data-prompt]").forEach((b) => (b.onclick = () => (($("#prompt").value = b.dataset.prompt), forge())));
+buildKeyboard();
+forge();
