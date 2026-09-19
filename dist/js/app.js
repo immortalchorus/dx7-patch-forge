@@ -504,16 +504,22 @@ $("#octUp").onclick = () => shiftOctave(1);
 const VERB_KEY = "owl.reverb";
 const verb = { settings: loadReverb(), nodes: null };
 
+// Settings saved before the impulse was corrected had to be dialled down to almost nothing to
+// be usable, so a mix from that version would now be inaudible: take the default instead.
+const VERB_VERSION = 2;
 function loadReverb() {
   try {
-    return sanitizeReverb(JSON.parse(localStorage.getItem(VERB_KEY)) || undefined);
+    const saved = JSON.parse(localStorage.getItem(VERB_KEY));
+    if (!saved) return defaultReverb();
+    if (saved.v !== VERB_VERSION) saved.mix = defaultReverb().mix;
+    return sanitizeReverb(saved);
   } catch {
     return defaultReverb();
   }
 }
 function saveReverb() {
   try {
-    localStorage.setItem(VERB_KEY, JSON.stringify(verb.settings));
+    localStorage.setItem(VERB_KEY, JSON.stringify({ ...verb.settings, v: VERB_VERSION }));
   } catch {
     // Storage blocked; the setting still applies for this session.
   }

@@ -71,8 +71,9 @@ export function impulseResponse(sampleRate, { seconds = 1.2, damping = 0.5, seed
       out[i] = lp * decay * front;
       energy += out[i] * out[i];
     }
-    // Normalise so the mix control means the same thing whatever the size.
-    const gain = energy > 0 ? 0.5 / Math.sqrt(energy / sampleRate) : 1;
+    // Unit energy, so convolving leaves the signal at roughly its own level: the mix control
+    // is then literally how much wet there is against the dry, whatever the size of the space.
+    const gain = energy > 0 ? 1 / Math.sqrt(energy) : 1;
     for (let i = 0; i < length; i++) out[i] *= gain;
     return out;
   });

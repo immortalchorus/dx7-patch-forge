@@ -56,3 +56,34 @@ test("settings are forced into range, and every preset is usable", () => {
     assert.ok(l.length > 1000 && rms(l) > 0, p.id);
   }
 });
+
+/** Convolve, the way a ConvolverNode with normalize = false does. */
+function convolve(input, h) {
+  const out = new Float64Array(input.length + h.length);
+  for (let i = 0; i < input.length; i++) {
+    const x = input[i];
+    if (!x) continue;
+    for (let k = 0; k < h.length; k++) out[i + k] += x * h[k];
+  }
+  return out;
+}
+
+test("the mix control means what it says: 20% mix is about 20% wet", () => {
+  // A short space at a low rate, so a plain convolution is quick.
+  const sr = 8000;
+  const [h] = impulseResponse(sr, { seconds: 0.4, damping: 0.5 });
+  const noise = new Float64Array(sr);
+  let seed = 12345;
+  for (let i = 0; i < noise.length; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    noise[i] = (seed / 0x3fffffff - 1) * 0.3;
+  }
+  const wet = convolve(noise, h);
+  // Convolving must leave the level alone, or the mix control lies about how much reverb there is.
+  const ratio = rms(wet.slice(0, noise.length)) / rms(noise);
+  assert.ok(ratio > 0.6 && ratio < 1.6, `wet path is ${ratio.toFixed(2)}x the dry signal, should be about 1x`);
+  for (const mix of [0.1, 0.2, 0.5]) {
+    const mixed = rms(wet.slice(0, noise.length).map((x) => x * mix)) / rms(noise);
+    assert.ok(Math.abs(mixed - mix) < mix * 0.6, `at ${mix * 100}% the wet signal is ${(mixed * 100).toFixed(0)}% of the dry`);
+  }
+});
