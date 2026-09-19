@@ -1,14 +1,14 @@
 # OWL: Operator Waveform Lab
 
-OWL (Operator Waveform Lab, formerly DX7 Patch Forge) is a browser-based patch designer for Yamaha DX7-compatible SysEx and the native SpaceAge 80s FM synthesizer format.
+OWL (Operator Waveform Lab) is a browser-based patch designer for 6-operator FM synthesis. It writes standard voice SysEx, compatible with the Yamaha DX7, DX7II, TX802 and Dexed, and the native SpaceAge 80s FM synthesizer format.
 
 Describe a sound in ordinary language, audition it on the built-in keyboard, and export:
 
 - A native single-patch `.ssynth` file for SpaceAge 80s FM
-- A 163-byte Yamaha DX7 single-voice `.syx`
-- A 32-voice Yamaha DX7 cartridge `.syx`: the chosen voice plus 31 related candidates and variations
+- A 163-byte single-voice `.syx`
+- A 32-voice cartridge `.syx`: the chosen voice plus 31 related candidates and variations
 
-**Cartridges.** Open a DX7 `.syx` (32-voice cartridge, raw bank, or single voices) or a SpaceAge `.ssynth`, pick any voice and edit it with the sliders, starting exactly as loaded. Store results into a separate 32-slot "My cartridge", which is kept in the browser and downloaded as its own `.syx`. The opened file is never modified.
+**Cartridges.** Open a `.syx` (32-voice cartridge, raw bank, or single voices) or a SpaceAge `.ssynth`, pick any voice and edit it with the sliders, starting exactly as loaded. Store results into a separate 32-slot "My cartridge", which is kept in the browser and downloaded as its own `.syx`. The opened file is never modified.
 
 In Chrome or Edge, **Send to synth** also sends the current voice over Web MIDI to a DX7, TX802, Dexed or any compatible synth, on a chosen output and channel, optionally on every change. It sends only the single-voice dump, which lands in the synth's edit buffer, so nothing stored on the synth is overwritten. On a DX7, set SYS INFO AVAIL so it accepts SysEx.
 
@@ -23,7 +23,7 @@ Live application: https://immortalchorus.github.io/owl-operator-waveform-lab/
 
 ## Shaping the sound
 
-After forging, sliders in seven groups (Tone, Layers, Shape, Movement, Pitch, Playing, Output) let you keep working in sound terms rather than DX7 parameters. The description sets their starting positions; 0 always means "as the starting voice has it". Every change rebuilds the voice from the starting voice plus the full slider set, so moving a slider back really undoes it. The Variation control is a small, visible offset on a few tone sliders.
+After forging, sliders in seven groups (Tone, Layers, Shape, Movement, Pitch, Playing, Output) let you keep working in sound terms rather than raw operator parameters. The description sets their starting positions; 0 always means "as the starting voice has it". Every change rebuilds the voice from the starting voice plus the full slider set, so moving a slider back really undoes it. The Variation control is a small, visible offset on a few tone sliders.
 
 Each slider is an FM-aware edit, and the ones with a measurable result are searched against the renderer like the description targets:
 
