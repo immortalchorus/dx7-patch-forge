@@ -45,3 +45,16 @@ test("cartridge dump is 4104 bytes and parses back to the same 32 voices", () =>
 test("a default voice has a neutral pitch envelope", () => {
   assert.deepEqual(defaultVoice().pitchEg.levels, [50, 50, 50, 50]);
 });
+
+test("reads cartridges, raw banks and back-to-back single voices", async () => {
+  const { readDx7File } = await import("../dist/js/dx7.js");
+  const voices = LIBRARY.slice(0, 32).map((e) => e.voice);
+  assert.equal(readDx7File(cartridgeSysex(voices)).voices.length, 32);
+  const raw = Uint8Array.from(voices.flatMap(packVoice));
+  assert.deepEqual(readDx7File(raw).voices, voices);
+  const two = new Uint8Array([...singleVoiceSysex(voices[0]), ...singleVoiceSysex(voices[1])]);
+  assert.deepEqual(readDx7File(two).voices, [voices[0], voices[1]]);
+  const bad = cartridgeSysex(voices);
+  bad[4102] ^= 1;
+  assert.equal(readDx7File(bad).checksumErrors, 1);
+});

@@ -294,6 +294,36 @@ export function parseSysex(bytes) {
   throw new Error("Not a DX7 voice or cartridge dump");
 }
 
+/**
+ * Read any common DX7 voice file: a 32-voice cartridge dump, a raw 4096-byte bank, or one or
+ * more single-voice dumps back to back. Returns { voices, checksumErrors }. Voices whose
+ * checksum fails are still returned (many files in circulation have bad checksums) and counted.
+ */
+export function readDx7File(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+  if (b.length === 4096 && b[0] !== 0xf0) {
+    return { voices: Array.from({ length: 32 }, (_, i) => unpackVoice([...b.slice(i * 128, i * 128 + 128)])), checksumErrors: 0 };
+  }
+  const voices = [];
+  let checksumErrors = 0;
+  for (let i = 0; i + 6 < b.length; i++) {
+    if (b[i] !== 0xf0 || b[i + 1] !== 0x43) continue;
+    if (b[i + 3] === 0x09 && b[i + 4] === 0x20 && b[i + 5] === 0x00 && i + 4104 <= b.length) {
+      const d = [...b.slice(i + 6, i + 4102)];
+      if (checksum(d) !== b[i + 4102]) checksumErrors++;
+      for (let v = 0; v < 32; v++) voices.push(unpackVoice(d.slice(v * 128, v * 128 + 128)));
+      i += 4103;
+    } else if (b[i + 3] === 0x00 && b[i + 4] === 0x01 && b[i + 5] === 0x1b && i + 163 <= b.length) {
+      const d = [...b.slice(i + 6, i + 161)];
+      if (checksum(d) !== b[i + 161]) checksumErrors++;
+      voices.push(vcedToVoice(d));
+      i += 162;
+    }
+  }
+  if (!voices.length) throw new Error("No DX7 voices found in this file");
+  return { voices, checksumErrors };
+}
+
 function vcedToVoice(d) {
   const ops = [];
   for (let stored = 5; stored >= 0; stored--) {

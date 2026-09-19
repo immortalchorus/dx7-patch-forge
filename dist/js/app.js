@@ -1,5 +1,5 @@
-import { ALGORITHMS, operatorRoles, opRatio, opFixedHz, cleanName, singleVoiceSysex, cartridgeSysex } from "./dx7.js";
-import { ssynthFile } from "./ssynth.js";
+import { ALGORITHMS, operatorRoles, opRatio, opFixedHz, cleanName, singleVoiceSysex, cartridgeSysex, readDx7File, defaultVoice, sanitizeVoice } from "./dx7.js";
+import { ssynthFile, parseSsynth } from "./ssynth.js";
 import { CONTROLS, GROUPS, neutralSliders } from "./controls.js";
 import { cartridgeVoices } from "./designer.js";
 import { MidiLink } from "./midi.js";
@@ -27,6 +27,11 @@ worker.onmessage = ({ data }) => {
     state.response = data;
     state.selected = 0;
     state.edits = {};
+  } else if (data.type === "load") {
+    state.response = { intent: { cues: [], dims: {}, families: {} }, results: [data.result], loadedFrom: state.loading };
+    state.selected = 0;
+    state.edits = {};
+    $("#patchName").value = data.result.name;
   } else {
     const edit = state.edits[state.selected];
     if (edit) edit.result = data.result;
@@ -167,7 +172,9 @@ function show() {
   $("#cueChips").innerHTML = cues
     .map((c) => `<span class="trait-chip${c.family ? " family" : ""}"><b>${esc(c.phrase.toUpperCase())}</b>${c.family ? `<em class="tag">${esc(c.family)}</em>` : ""}</span>`)
     .join("");
-  $("#interpretNote").textContent = cues.length
+  $("#interpretNote").textContent = state.response.loadedFrom
+    ? `Loaded ${state.response.loadedFrom}. Sliders start at 0, which is the voice exactly as loaded.`
+    : cues.length
     ? "Instrument words chose the starting voice; the others set the sliders below."
     : "No familiar sound words found, so the closest general-purpose voice was used. Try naming an instrument, or shape it with the sliders.";
 
@@ -386,6 +393,115 @@ $("#download").onclick = () => {
   const voices = cartridgeVoices([{ voice: namedVoice() }, ...others]);
   download(cartridgeSysex(voices), stem() + "_cartridge.syx");
 };
+
+// ---------------------------------------------------------------- cartridges
+// "Opened" is the file the user loaded; it is only ever read. "My cartridge" is a separate
+// 32-slot bank the user stores edited voices into and downloads. It persists in this browser.
+const WORKING_KEY = "owl.workingCartridge";
+const blankVoice = () => ({ ...defaultVoice(), name: "INIT VOICE" });
+const cart = { opened: null, working: loadWorking() };
+
+function loadWorking() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WORKING_KEY));
+    if (saved?.voices?.length === 32) return { name: saved.name || "MY CARTRIDGE", voices: saved.voices.map(sanitizeVoice), used: saved.used || [] };
+  } catch {
+    // Unavailable or corrupt storage: start with an empty cartridge.
+  }
+  return { name: "MY CARTRIDGE", voices: Array.from({ length: 32 }, blankVoice), used: [] };
+}
+function saveWorking() {
+  try {
+    localStorage.setItem(WORKING_KEY, JSON.stringify(cart.working));
+  } catch {
+    // Storage full or blocked; the cartridge still works for this session.
+  }
+}
+
+function slotButtons(voices, kind, used = null) {
+  return voices
+    .map((v, i) => {
+      const empty = used && !used.includes(i);
+      return `<button class="slot ${empty ? "empty" : ""}" data-kind="${kind}" data-i="${i}" title="${empty ? "Empty slot" : "Edit this voice"}"><i>${i + 1}</i>${esc(empty ? "—" : v.name)}</button>`;
+    })
+    .join("");
+}
+function drawCarts() {
+  const o = cart.opened;
+  $("#openedTitle").textContent = o ? `${o.fileName} · ${o.voices.length} voice${o.voices.length === 1 ? "" : "s"}` : "Opened file";
+  $("#openedList").innerHTML = o ? slotButtons(o.voices, "opened") : '<p class="slot-empty">Nothing opened yet.</p>';
+  $("#workingName").value = cart.working.name;
+  $("#workingList").innerHTML = slotButtons(cart.working.voices, "working", cart.working.used);
+  const firstEmpty = [...Array(32).keys()].find((i) => !cart.working.used.includes(i)) ?? 0;
+  const keep = +($("#storeSlot").value || firstEmpty);
+  $("#storeSlot").innerHTML = cart.working.voices
+    .map((v, i) => `<option value="${i}" ${i === (cart.working.used.includes(keep) ? firstEmpty : keep) ? "selected" : ""}>slot ${i + 1}${cart.working.used.includes(i) ? " · " + esc(v.name) : " · empty"}</option>`)
+    .join("");
+}
+
+/** Make a voice from a file the starting voice for editing. */
+function editVoice(voice, label) {
+  state.loading = label;
+  state.request++;
+  setBusy(true, "LOADING + MEASURING…");
+  worker.postMessage({ type: "load", id: state.request, entry: { id: "file-" + state.request, voice: sanitizeVoice(voice) } });
+}
+
+$("#openFile").onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let voices, note = "";
+    if (/\.ssynth$/i.test(file.name) || bytes[0] === 0x7b) {
+      voices = [parseSsynth(new TextDecoder().decode(bytes))];
+    } else {
+      const r = readDx7File(bytes);
+      voices = r.voices;
+      if (r.checksumErrors) note = ` (${r.checksumErrors} checksum warning${r.checksumErrors > 1 ? "s" : ""}; voices loaded anyway)`;
+    }
+    cart.opened = { fileName: file.name, voices };
+    drawCarts();
+    $("#cartStatus").textContent = `Opened ${file.name}${note}. Pick a voice to edit it.`;
+    if (voices.length === 1) editVoice(voices[0], file.name);
+  } catch (err) {
+    $("#cartStatus").textContent = `Could not read ${file.name}: ${err.message || err}`;
+  }
+};
+
+document.querySelector(".cart-cols").addEventListener("click", (e) => {
+  const b = e.target.closest(".slot");
+  if (!b || b.classList.contains("empty")) return;
+  const i = +b.dataset.i;
+  if (b.dataset.kind === "opened") editVoice(cart.opened.voices[i], `${cart.opened.fileName}, voice ${i + 1}`);
+  else editVoice(cart.working.voices[i], `${cart.working.name}, slot ${i + 1}`);
+});
+
+$("#storeVoice").onclick = () => {
+  if (!current()) return;
+  const slot = +$("#storeSlot").value;
+  cart.working.voices[slot] = namedVoice();
+  if (!cart.working.used.includes(slot)) cart.working.used.push(slot);
+  saveWorking();
+  drawCarts();
+  $("#cartStatus").textContent = `Stored ${patchName().trim()} in slot ${slot + 1} of ${cart.working.name}.`;
+};
+$("#workingName").oninput = (e) => {
+  cart.working.name = e.target.value.trim() || "MY CARTRIDGE";
+  saveWorking();
+};
+$("#downloadWorking").onclick = () => {
+  const file = cart.working.name.replace(/[^\w -]+/g, "").trim().replace(/\s+/g, "_") || "MY_CARTRIDGE";
+  download(cartridgeSysex(cart.working.voices), file + ".syx");
+};
+$("#clearWorking").onclick = () => {
+  if (!confirm(`Clear all 32 slots of ${cart.working.name}? Download it first if you want to keep it.`)) return;
+  cart.working = { name: cart.working.name, voices: Array.from({ length: 32 }, blankVoice), used: [] };
+  saveWorking();
+  drawCarts();
+};
+drawCarts();
 
 // ---------------------------------------------------------------- MIDI out
 const midi = new MidiLink(drawMidi);

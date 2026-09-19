@@ -36,3 +36,12 @@ test("patch file includes both integrity hashes", async () => {
   assert.match(json.patchIntegrity, /^[0-9a-f]{64}$/);
   assert.equal(json.integrityVersion, 1);
 });
+
+test("a SpaceAge patch reads back to the same voice", async () => {
+  const { parseSsynth } = await import("../dist/js/ssynth.js");
+  for (const { voice } of LIBRARY) {
+    const back = parseSsynth(await ssynthFile(voice, voice.name));
+    for (const k of ["algorithm", "feedback", "transpose", "lfo", "pitchEg"]) assert.deepEqual(back[k], voice[k], voice.name + " " + k);
+    back.ops.forEach((o, i) => assert.deepEqual(Object.entries(o).sort(), Object.entries(voice.ops[i]).sort(), voice.name + " op" + (i + 1)));
+  }
+});

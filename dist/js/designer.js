@@ -231,11 +231,12 @@ export function tailor(entry, sliders) {
   if (Math.abs(brightTotal) >= 2) note(`${brightTotal > 0 ? "more" : "less"} modulation (${brightTotal > 0 ? "+" : ""}${Math.round(brightTotal)} levels)`);
 
   // Level last: carriers only, so the sound is unchanged apart from loudness.
-  const auto = autoLevel(v);
+  const auto = entry.autoLevel === false && !s.autoLevel ? 0 : autoLevel(v);
   const trim = s.level < 0 ? 24 * s.level : 6 * s.level;
   if (trim) M.carrierGain(v, trim);
   const peak = peakLevel(v);
-  note(`level ${auto >= 0 ? "+" : ""}${auto.toFixed(1)} dB automatic${trim ? `, ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim` : ""}`);
+  if (auto || entry.autoLevel !== false || s.autoLevel) note(`level ${auto >= 0 ? "+" : ""}${auto.toFixed(1)} dB automatic`);
+  if (trim) note(`level ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim`);
 
   const features = { ...measure(v, full), peak, peakDb: 20 * Math.log10(peak / 2) };
   return { entry, voice: v, features, base, targets, applied, sliders: s, error: targetError(features, targets, s) };
@@ -296,7 +297,15 @@ export function patchName(baseName, sliders) {
   return cleanName(`${best[1]} ${short}`);
 }
 
-export const entryById = (id) => LIBRARY.find((e) => e.id === id);
+// Voices the user loads from a file become starting voices too, without joining the library
+// that descriptions search.
+const USER_ENTRIES = new Map();
+export function registerEntry(entry) {
+  USER_ENTRIES.set(entry.id, { family: "loaded", tags: [], source: "Loaded file", autoLevel: false, ...entry });
+  featureCache.delete(entry.id);
+  return USER_ENTRIES.get(entry.id);
+}
+export const entryById = (id) => USER_ENTRIES.get(id) || LIBRARY.find((e) => e.id === id);
 
 // A variation is a small, visible offset on a few tone sliders, so every variation can be
 // seen (and undone) in the slider panel rather than hidden inside the search.

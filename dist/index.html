@@ -105,6 +105,31 @@
           <button id="download" class="single-download">DX7 32-voice cartridge (.syx): this voice + 31 variations</button>
           <button id="singleDownload" class="single-download">DX7 single voice (.syx, 163 bytes)</button>
         </div>
+        <div class="carts">
+          <div class="interpret-head"><span>CARTRIDGES</span><small id="cartStatus">Open a .syx or .ssynth file to edit its voices. The file itself is never changed.</small></div>
+          <div class="cart-actions">
+            <label class="file-btn">Open file…<input type="file" id="openFile" accept=".syx,.ssynth,.bin,.mid" hidden></label>
+            <span class="cart-store">
+              <button id="storeVoice">Store current voice in</button>
+              <select id="storeSlot" aria-label="Slot in my cartridge"></select>
+            </span>
+          </div>
+          <div class="cart-cols">
+            <div>
+              <h4 id="openedTitle">Opened file</h4>
+              <div id="openedList" class="slot-grid"><p class="slot-empty">Nothing opened yet.</p></div>
+            </div>
+            <div>
+              <h4><input id="workingName" value="MY CARTRIDGE" maxlength="24" aria-label="My cartridge name" spellcheck="false"></h4>
+              <div id="workingList" class="slot-grid"></div>
+              <div class="cart-actions">
+                <button id="downloadWorking" class="midi-send">Download my cartridge (.syx)</button>
+                <button id="clearWorking">Clear</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="midi-row" id="midiRow">
           <div class="midi-head"><span>SEND TO SYNTH</span><small id="midiStatus">Web MIDI · single voice to the edit buffer</small></div>
           <div class="midi-controls">
