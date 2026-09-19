@@ -98,18 +98,22 @@ export class Env {
 /** Linear amplitude of an envelope level: 2^(level/2^24 - 14). Full scale is 2.0. */
 export const envGain = (level) => Math.pow(2, level / TWO_24 - 14);
 
+// Pitch envelope rate table as used by SpaceAge's 80s FM engine.
 const PITCHENV_RATE = [
-  1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 12, 13, 13, 14, 14, 15, 15, 16,
-  16, 17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28, 29, 30, 31, 32,
-  33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 45, 46, 48, 50, 51, 53, 55, 57, 59, 61, 63, 66, 68, 71, 74, 76, 79,
-  82, 85, 88, 91, 94, 97, 100, 104, 107, 111, 115, 119, 123, 127,
+  1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 16, 16, 17, 18, 18, 19,
+  20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 33, 34, 36, 37, 38, 39, 41, 42, 44, 46, 47, 49, 51, 53, 54, 56, 58, 60,
+  62, 64, 66, 68, 70, 72, 74, 76, 79, 82, 85, 88, 91, 94, 98, 102, 106, 110, 115, 120, 125, 130, 135, 141, 147, 153,
+  159, 165, 171, 178, 185, 193, 202, 211, 232, 243, 254, 255,
 ];
-const PITCHENV_TAB = [
+export const PITCH_LEVEL = [
   -128, -116, -104, -95, -85, -76, -68, -61, -56, -52, -49, -46, -43, -41, -39, -37, -35, -33, -32, -31, -30,
   -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8,
   -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
   23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 40, 43, 46, 49, 53, 58, 65, 73, 82, 92, 103, 115, 127,
 ];
+
+/** Pitch envelope speed in octaves per second for rate r. */
+export const pitchOctPerSecond = (r) => PITCHENV_RATE[r] / 21.3;
 
 /** Pitch envelope; level is in octaves. */
 class PitchEnv {
@@ -118,14 +122,14 @@ class PitchEnv {
     // msfa: level is Q24 log2 with targets at tab << 19 (tab / 32 octaves) and
     // inc = rate * N * 2^24 / (21.3 * sampleRate), i.e. rate * N / (21.3 * sampleRate) octaves per block.
     this.unit = N / (21.3 * sampleRate);
-    this.level = PITCHENV_TAB[eg.levels[3]] / 32;
+    this.level = PITCH_LEVEL[eg.levels[3]] / 32;
     this.down = true;
     this.advance(0);
   }
   advance(ix) {
     this.ix = ix;
     if (ix > 3) return;
-    this.target = PITCHENV_TAB[this.eg.levels[ix]] / 32;
+    this.target = PITCH_LEVEL[this.eg.levels[ix]] / 32;
     this.rising = this.target > this.level;
     this.inc = PITCHENV_RATE[this.eg.rates[ix]] * this.unit;
   }

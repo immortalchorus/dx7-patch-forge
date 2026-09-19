@@ -6,11 +6,15 @@
 //   decay    + sustains longer while held     release  + longer tail after key-up
 //   harm     + pure/harmonic, - metallic      grit     + rough/buzzy (feedback)
 //   vibrato  pitch wobble                     tremolo  amplitude wobble
-//   evolve   timbre that changes over time    register octave shift, + up
+//   evolve   + dark->bright, - bright->dark   register octave shift, + up
 //   width    detuned / chorused spread        dyn      velocity sensitivity
+// plus the finer controls in controls.js (bark, onset, scoop, wobble...), which cues can
+// also set directly.
 
 export const DIMENSIONS = [
   "bright", "attack", "decay", "release", "harm", "grit", "vibrato", "tremolo", "evolve", "register", "width", "dyn",
+  "hollow", "bark", "sustain", "evolveTime", "wobble", "lfoRate", "onset", "scoop", "scoopTime", "fall",
+  "velBright", "velLoud", "rateKey", "keyTrack", "level",
 ];
 
 // Instrument vocabulary. Longer phrases are matched first and consume their words.
@@ -60,7 +64,7 @@ const CUES = [
   c("gentle", { bright: -0.4, attack: -0.2 }), c("round", { bright: -0.4 }), c("rounded", { bright: -0.4 }),
   c("smooth", { bright: -0.3, grit: -0.5 }), c("velvety", { bright: -0.5, grit: -0.4 }), c("warm", { bright: -0.35, width: 0.35, harm: 0.2 }),
   c("dusty", { bright: -0.3, grit: 0.2 }), c("lo-fi", { bright: -0.5, grit: 0.3 }), c("vintage", { bright: -0.2, width: 0.2 }),
-  c("hollow", { bright: -0.2, harm: 0.1 }), c("woody", { bright: -0.2 }), c("wooden", { bright: -0.2 }), c("pure", { bright: -0.4, harm: 0.8, grit: -0.6 }),
+  c("hollow", { hollow: -0.8, bright: -0.1 }), c("woody", { bright: -0.2 }), c("wooden", { bright: -0.2 }), c("pure", { bright: -0.4, harm: 0.8, grit: -0.6 }),
   c("sine", { bright: -0.8, harm: 0.8 }), c("clean", { harm: 0.5, grit: -0.6 }), c("clear", { harm: 0.4, grit: -0.3 }),
   // attack
   c("very slow attack", { attack: -1.4 }), c("slow attack", { attack: -1 }), c("long attack", { attack: -1 }),
@@ -104,6 +108,30 @@ const CUES = [
   c("sub", { register: -1 }), c("deep", { register: -0.8, bright: -0.2 }), c("low", { register: -0.7 }), c("rumbling", { register: -1, grit: 0.3 }),
   c("high", { register: 0.7 }), c("octave up", { register: 1 }), c("octave down", { register: -1 }), c("tiny", { register: 0.8, decay: -0.2 }),
   c("high pitched", { register: 1 }), c("small", { register: 0.5 }),
+  // body and bite
+  c("full", { hollow: 0.5 }), c("rich", { hollow: 0.6, bright: 0.2 }), c("full-bodied", { hollow: 0.8 }), c("reedy", { hollow: -0.6, bright: 0.2 }),
+  c("bark", { bark: 1 }), c("barking", { bark: 1 }), c("bite", { bark: 0.8 }), c("biting attack", { bark: 1 }), c("tine", { bark: 0.6 }),
+  c("attack transient", { bark: 0.8 }), c("chiff", { bark: 0.6 }), c("pick", { bark: 0.6 }), c("thwack", { bark: 1 }),
+  // timbre over time
+  c("opens up", { evolve: 1 }), c("opening", { evolve: 0.9 }), c("gets brighter", { evolve: 1 }), c("brightens", { evolve: 1 }),
+  c("dark to bright", { evolve: 1.4 }), c("bright to dark", { evolve: -1.4 }), c("gets darker", { evolve: -1 }), c("darkens", { evolve: -1 }),
+  c("darkening", { evolve: -1 }), c("mellows", { evolve: -0.9 }), c("closes", { evolve: -0.8 }), c("fading", { evolve: -0.5, decay: -0.2 }),
+  c("slowly", { evolveTime: 0.6, attack: -0.2 }), c("gradual", { evolveTime: 0.6 }), c("gradually", { evolveTime: 0.6 }),
+  // movement timing and speed
+  c("delayed vibrato", { vibrato: 0.8, onset: 1 }), c("late vibrato", { vibrato: 0.8, onset: 1.2 }), c("toward the end", { onset: 1.2 }),
+  c("towards the end", { onset: 1.2 }), c("at the end", { onset: 1 }), c("later in the note", { onset: 1.2 }), c("comes in", { onset: 0.6 }),
+  c("fast vibrato", { vibrato: 0.8, lfoRate: 0.8 }), c("slow vibrato", { vibrato: 0.8, lfoRate: -0.8 }), c("flutter", { tremolo: 0.8, lfoRate: 1 }),
+  c("trill", { vibrato: 1, lfoRate: 1 }), c("wah", { wobble: 1 }), c("wah-wah", { wobble: 1.2 }), c("filter wobble", { wobble: 1 }),
+  c("rhythmic", { tremolo: 0.6, lfoRate: 0.4 }), c("slow tremolo", { tremolo: 0.8, lfoRate: -0.7 }), c("fast tremolo", { tremolo: 0.8, lfoRate: 0.8 }),
+  // pitch
+  c("scoop", { scoop: 0.8 }), c("scooping", { scoop: 0.8 }), c("bend up", { scoop: 0.8 }), c("slides in", { scoop: 0.7, scoopTime: 0.5 }),
+  c("slide", { scoop: 0.6, scoopTime: 0.4 }), c("fall off", { fall: 1 }), c("falls off", { fall: 1 }), c("droop", { fall: 0.7 }),
+  c("drops", { fall: 0.6 }), c("pitch drop", { fall: 1 }), c("dive", { fall: 1 }),
+  // playing
+  c("velocity sensitive", { velBright: 1, velLoud: 0.6 }), c("touch", { velBright: 0.6 }), c("even", { velBright: -0.6, velLoud: -0.6 }),
+  c("realistic", { rateKey: 0.6, keyTrack: -0.4 }), c("natural", { rateKey: 0.5, keyTrack: -0.3 }),
+  // level
+  c("quiet", { level: -0.5 }), c("quieter", { level: -0.5 }), c("loud", { level: 0.2 }),
   // mood and character
   c("spacey", { release: 0.9, width: 0.5, evolve: 0.6, vibrato: 0.3 }), c("spacy", { release: 0.9, width: 0.5, evolve: 0.6 }),
   c("cosmic", { release: 1, width: 0.5, evolve: 0.6 }), c("space", { release: 0.7, evolve: 0.4 }),

@@ -1,26 +1,38 @@
 // Runs the designer off the main thread; each design renders dozens of test notes.
-import { design, cartridgeVoices } from "./designer.js";
+import { design, tailor, entryById, patchName } from "./designer.js";
+
+const serialize = (r) => ({
+  name: r.name,
+  voice: r.voice,
+  features: r.features,
+  base: r.base,
+  targets: r.targets,
+  applied: r.applied,
+  sliders: r.sliders,
+  score: r.score,
+  entryId: r.entry.id,
+  source: { name: r.entry.voice.name, family: r.entry.family, origin: r.entry.source },
+});
 
 self.onmessage = ({ data }) => {
-  const { id, prompt, variation } = data;
+  const { id, type } = data;
   try {
-    const { intent, results } = design(prompt, { variation });
-    self.postMessage({
-      id,
-      intent: { dims: intent.dims, families: intent.families, cues: intent.cues },
-      results: results.map((r) => ({
-        name: r.name,
-        voice: r.voice,
-        features: r.features,
-        base: r.base,
-        targets: r.targets,
-        applied: r.applied,
-        score: r.score,
-        source: { name: r.entry.voice.name, family: r.entry.family, origin: r.entry.source },
-      })),
-      cartridge: cartridgeVoices(results),
-    });
+    if (type === "design") {
+      const { intent, results } = design(data.prompt, { variation: data.variation });
+      self.postMessage({
+        id,
+        type,
+        intent: { dims: intent.dims, families: intent.families, cues: intent.cues },
+        results: results.map(serialize),
+      });
+    } else if (type === "tailor") {
+      const entry = entryById(data.entryId);
+      const r = tailor(entry, data.sliders);
+      r.name = patchName(entry.voice.name, r.sliders);
+      r.voice.name = r.name;
+      self.postMessage({ id, type, result: serialize(r) });
+    }
   } catch (err) {
-    self.postMessage({ id, error: String(err && err.stack || err) });
+    self.postMessage({ id, type, error: String((err && err.stack) || err) });
   }
 };

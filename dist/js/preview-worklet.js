@@ -1,20 +1,21 @@
 // Real-time polyphonic preview of the current voice using the same renderer as the designer.
+// The output stage copies SpaceAge (and Dexed): each voice's carrier sum is scaled by 0.5
+// and hard-clipped at full scale, so a patch that clips there clips audibly here too.
 import { FmNote } from "./render.js";
-import { ALGORITHMS } from "./dx7.js";
 
 const MAX_NOTES = 12;
+const MASTER = 0.35; // headroom for chords
 
 class FmPreview extends AudioWorkletProcessor {
   constructor() {
     super();
     this.voice = null;
-    this.gain = 0.2;
     this.notes = [];
+    this.buf = new Float64Array(128);
     this.mix = new Float64Array(128);
     this.port.onmessage = ({ data }) => {
       if (data.type === "voice") {
         this.voice = data.voice;
-        this.gain = 0.22 / Math.sqrt(ALGORITHMS[data.voice.algorithm].carriers.length);
       } else if (data.type === "on" && this.voice) {
         for (const n of this.notes) if (n.key === data.note && n.fm.releasedAt < 0) n.fm.release();
         this.notes.push({ key: data.note, fm: new FmNote(this.voice, data.note, data.velocity, sampleRate, Math.random() * 2 ** 32) });
@@ -29,11 +30,15 @@ class FmPreview extends AudioWorkletProcessor {
   process(_, outputs) {
     const out = outputs[0];
     const frames = out[0].length;
-    if (this.mix.length !== frames) this.mix = new Float64Array(frames);
+    if (this.mix.length !== frames) (this.mix = new Float64Array(frames)), (this.buf = new Float64Array(frames));
     this.mix.fill(0);
-    for (const n of this.notes) n.fm.renderInto(this.mix, 0, frames, this.gain);
+    for (const n of this.notes) {
+      this.buf.fill(0);
+      n.fm.renderInto(this.buf, 0, frames, 0.5);
+      for (let i = 0; i < frames; i++) this.mix[i] += Math.max(-1, Math.min(1, this.buf[i]));
+    }
     this.notes = this.notes.filter((n) => !n.fm.finished && n.fm.t < sampleRate * 60);
-    for (const ch of out) for (let i = 0; i < frames; i++) ch[i] = Math.tanh(this.mix[i]);
+    for (const ch of out) for (let i = 0; i < frames; i++) ch[i] = Math.max(-1, Math.min(1, this.mix[i] * MASTER));
     return true;
   }
 }

@@ -7,9 +7,10 @@
 //    rendered audio until brightness, decay and attack land on their targets.
 // 4. Keep the candidate whose measured sound is closest to the description.
 
-import { cloneVoice, cleanName } from "./dx7.js";
+import { cloneVoice, cleanName, operatorRoles } from "./dx7.js";
 import { interpret, stem } from "./language.js";
-import { measure } from "./features.js";
+import { measure, peakLevel } from "./features.js";
+import { neutralSliders, slidersFromIntent, registerOctaves } from "./controls.js";
 import * as M from "./macros.js";
 import { CORE_VOICES } from "./voices-core.js";
 import { EMM_VOICES } from "./voices-emm.js";
@@ -98,13 +99,13 @@ function fitScore(entry, intent) {
   return score * 0.9;
 }
 
-/** Search a single edit amount so that measure(edit(amount))[key] hits target (in log space). */
-function solve(voice, edit, key, target, lo, hi, opts, increasing = true, steps = 7) {
+/** Search one edit amount so that measure(view(edit(amount)))[key] hits target (in log space). */
+function solve(voice, edit, key, target, lo, hi, opts, increasing = true, steps = 7, view = (v) => v) {
   let best = { amount: 0, voice, value: null, err: Infinity };
   for (let i = 0; i < steps; i++) {
     const mid = (lo + hi) / 2;
     const v = edit(cloneVoice(voice), mid);
-    const value = measure(v, opts)[key];
+    const value = measure(view(v), opts)[key];
     const err = Math.abs(log(value) - log(target));
     if (err < best.err) best = { amount: mid, voice: v, value, err };
     if ((value < target) === increasing) lo = mid;
@@ -114,105 +115,179 @@ function solve(voice, edit, key, target, lo, hi, opts, increasing = true, steps 
   return best;
 }
 
-/** Work out absolute targets from the base voice's measurements and the description. */
-export function targetsFor(base, intent, jitter = () => 0.5) {
-  const d = intent.dims;
-  const j = (amt) => (jitter() - 0.5) * 2 * amt;
+const evolveSeconds = (t) => 0.3 * 20 ** ((t + 1) / 2);
+
+/** Absolute measurement targets from the starting voice's measurements and the sliders. */
+export function targetsFor(base, s) {
   const t = {};
-  const brightShift = d.bright + j(0.25);
+  const brightShift = s.bright;
   // Darkening stops short of a bare sine unless purity was asked for, so the instrument survives.
-  const floor = d.harm > 0.5 ? 1.02 : Math.max(1.1, base.centroid * 0.45);
+  const floor = s.harm > 0.5 ? 1.02 : Math.max(1.1, base.centroid * 0.45);
   t.centroid = Math.max(Math.min(floor, base.centroid), Math.min(25, base.centroid * 2 ** (1.6 * brightShift)));
-  if (Math.abs(d.attack) > 0.12) t.attack = Math.exp(log(1.5) + ((d.attack + 1) / 2) * (log(0.004) - log(1.5))) * (1 + j(0.15));
-  if (d.decay > 0.55) t.decay = 30;
-  else if (d.decay < -0.1 && base.decay >= SUSTAINED) t.decay = 1.5 * 4 ** (d.decay + 0.1) * (1 + j(0.15));
-  else if (Math.abs(d.decay) > 0.1) t.decay = Math.max(0.08, Math.min(25, Math.min(base.decay, 12) * 3 ** (1.5 * d.decay)));
-  if (Math.abs(d.release) > 0.1) {
+  if (Math.abs(s.attack) > 0.12) t.attack = Math.exp(log(1.5) + ((s.attack + 1) / 2) * (log(0.004) - log(1.5)));
+  if (s.decay > 0.55) t.decay = 30;
+  else if (s.decay < -0.1 && base.decay >= SUSTAINED) t.decay = 1.5 * 4 ** (s.decay + 0.1);
+  else if (Math.abs(s.decay) > 0.1) t.decay = Math.max(0.08, Math.min(25, Math.min(base.decay, 12) * 3 ** (1.5 * s.decay)));
+  if (Math.abs(s.release) > 0.1) {
     const from = base.release > 0.03 && base.release < 30 ? base.release : 0.4;
-    t.release = Math.max(0.03, Math.min(12, from * 3 ** (1.5 * d.release)));
-    if (d.release > 0.5) t.release = Math.max(t.release, 1.2);
+    t.release = Math.max(0.03, Math.min(12, from * 3 ** (1.5 * s.release)));
+    if (s.release > 0.5) t.release = Math.max(t.release, 1.2);
   }
+  if (Math.abs(s.evolve) > 0.1) t.evolveRatio = (base.late / base.early) * 2 ** (1.6 * s.evolve);
   return t;
 }
 
-function tailor(entry, intent, rand) {
+const pct = (x) => `${x > 0 ? "+" : ""}${Math.round(x * 100)}`;
+
+/**
+ * Build a voice from a library entry and a full slider set. Deterministic: the same sliders
+ * always give the same voice.
+ */
+export function tailor(entry, sliders) {
+  const s = { ...neutralSliders(), ...sliders };
   const base = baseFeatures(entry);
-  const d = intent.dims;
-  const targets = targetsFor(base, intent, rand);
+  const targets = targetsFor(base, s);
   let v = cloneVoice(entry.voice);
   const applied = [];
-  const note = (s) => applied.push(s);
+  const note = (x) => applied.push(x);
+  const on = (id, t = 0.1) => Math.abs(s[id]) > t;
 
   // Direct edits first: they change timbre, so the measured searches below run after them.
-  let octaves = Math.round(d.register * 1.2);
-  if (entry.family === "bass" && octaves < 0 && intent.raw.register > -1.2) octaves = 0;
-  if (octaves) M.shiftOctaves(v, octaves), note(`${octaves > 0 ? "up" : "down"} ${Math.abs(octaves)} octave`);
-  if (Math.abs(d.harm) > 0.2) M.setHarmonicity(v, d.harm), note(d.harm > 0 ? "purer ratios" : "inharmonic modulators");
-  if (Math.abs(d.grit) > 0.15) M.setGrit(v, d.grit), note(`feedback ${v.feedback}`);
-  if (Math.abs(d.width) > 0.15) M.setWidth(v, d.width), note(d.width > 0 ? "detuned carriers" : "centred tuning");
-  if (Math.abs(d.dyn) > 0.15) M.setDynamics(v, d.dyn), note("velocity response");
-  if (d.evolve > 0.15) M.setEvolve(v, d.evolve), note("slow modulator swell");
-  if (Math.abs(d.vibrato) > 0.15) M.setVibrato(v, d.vibrato), note(d.vibrato > 0 ? "vibrato" : "less vibrato");
-  if (Math.abs(d.tremolo) > 0.15) M.setTremolo(v, d.tremolo), note(d.tremolo > 0 ? "tremolo" : "less tremolo");
+  const octaves = registerOctaves(s.register);
+  if (octaves) M.shiftOctaves(v, octaves), note(`${octaves > 0 ? "up" : "down"} ${Math.abs(octaves)} octave${Math.abs(octaves) > 1 ? "s" : ""}`);
+  if (on("hollow", 0.15)) M.setBody(v, s.hollow), note(s.hollow < 0 ? "hollow 1:2 modulators" : "full 1:1 modulators");
+  if (on("harm", 0.2)) M.setHarmonicity(v, s.harm), note(s.harm > 0 ? "purer ratios" : "inharmonic modulators");
+  if (on("grit", 0.15)) M.setGrit(v, s.grit), note(`feedback ${v.feedback}`);
+  if (on("width", 0.15)) M.setWidth(v, s.width), note(s.width > 0 ? "detuned carriers" : "centred tuning");
+  if (on("keyTrack")) M.setKeyTracking(v, s.keyTrack), note(s.keyTrack < 0 ? "high notes darker" : "high notes brighter");
+  if (on("rateKey")) M.setRateScaling(v, s.rateKey), note("rate scaling");
+  if (on("velBright", 0.05) || on("velLoud", 0.05)) M.setVelocity(v, s), note("velocity response");
+  if (["vibrato", "tremolo", "wobble", "lfoRate", "onset"].some((k) => on(k, 0.05))) {
+    M.setMovement(v, s);
+    const l = M.lfoState(v);
+    const parts = [];
+    if (l.cents >= 1) parts.push(`vibrato ${Math.round(l.cents)} cents`);
+    if (l.tremolo > 0.01) parts.push(`tremolo ${Math.round(l.tremolo * 100)}%`);
+    if (l.wobble > 0.01) parts.push(`timbre wobble ${Math.round(l.wobble * 100)}%`);
+    if (parts.length) note(`${parts.join(", ")} at ${l.hz.toFixed(1)} Hz${l.delay > 0.05 ? ` after ${l.delay.toFixed(1)} s` : ""}`);
+  }
+  if (on("scoop", 0.05) || on("fall", 0.05)) M.setPitchShape(v, s), note("pitch envelope");
   if (targets.decay >= SUSTAINED && base.decay < SUSTAINED) M.makeSustained(v), note("sustains while held");
   if (targets.decay && targets.decay < SUSTAINED && (base.decay >= SUSTAINED || base.sustain > -18)) M.makeDecaying(v), note("decays while held");
+  if (on("sustain", 0.05)) M.setSustain(v, s.sustain), note(`sustain ${pct(s.sustain)}`);
   if (targets.release) M.setRelease(v, targets.release), note(`release ${targets.release.toFixed(2)} s`);
   if (targets.attack) M.setAttack(v, targets.attack);
+  if (on("bark", 0.05)) note(s.bark > 0 ? "attack bite" : "softer attack bite");
 
-  // Attack first (it moves where the note body is measured), then decay, then brightness.
-  // The edits interact, so a second pass corrects whatever the later searches disturbed.
-  // Long releases need a long enough tail to be measured rather than extrapolated.
-  const full = { tail: Math.max(1.5, Math.min(10, (targets.release || 0) * 1.2)) };
-  const off = (key, target) => Math.abs(log(measure(v, full)[key] / target));
+  // Modulator envelopes carry both the attack bite and timbre over time; the evolve swing is
+  // searched against the measured late/early brightness ratio.
+  let shapeDepth = 1;
+  const shaped = () => M.shapeModulators(cloneVoice(v), s, shapeDepth);
+  // Timbre movement is judged from the end of the attack to the end of a hold long enough for
+  // the change to finish. Long releases need a long enough tail to be measured, not extrapolated.
+  const attackEnd = Math.min(2, targets.attack ?? base.attack);
+  const earlyAt = attackEnd > 0.1 ? attackEnd : 0.02;
+  const hold = targets.evolveRatio ? Math.min(8, Math.max(2, earlyAt + evolveSeconds(s.evolveTime) + 0.7)) : 2;
+  const full = { hold, earlyAt, tail: Math.max(1.5, Math.min(10, (targets.release || 0) * 1.2)) };
+  const off = (key, target) => Math.abs(log(measure(shaped(), full)[key] / target));
+
+  // Attack first (it moves where the note body is measured), then decay, release, timbre
+  // movement and brightness. The edits interact, so a second pass corrects drift.
   let brightTotal = 0;
-  for (let pass = 0; pass < 2; pass++) {
-    if (targets.attack && (pass === 0 || off("attack", targets.attack) > 0.3)) {
-      const r = solve(v, (x, amt) => M.setAttack(x, targets.attack * Math.exp(amt)), "attack", targets.attack, -2.5, 2.5, full, true, 6);
-      v = r.voice;
-    }
-    if (targets.decay && targets.decay < SUSTAINED && off("decay", targets.decay) > 0.2) {
-      v = solve(v, M.shiftDecay, "decay", targets.decay, -45, 45, full, false, 6).voice;
-    }
-    if (targets.release && measure(v, full).release > 0 && off("release", targets.release) > 0.2) {
-      v = solve(v, (x, amt) => M.setRelease(x, targets.release * Math.exp(amt)), "release", targets.release, -2.5, 2.5, full, true, 6).voice;
+  const passes = targets.evolveRatio ? 3 : 2;
+  for (let pass = 0; pass < passes; pass++) {
+    if (targets.attack && (pass === 0 || off("attack", targets.attack) > 0.3))
+      v = solve(v, (x, amt) => M.setAttack(x, targets.attack * Math.exp(amt)), "attack", targets.attack, -2.5, 2.5, full, true, 6, shapeWith(s, shapeDepth)).voice;
+    if (targets.decay && targets.decay < SUSTAINED && off("decay", targets.decay) > 0.2)
+      v = solve(v, M.shiftDecay, "decay", targets.decay, -45, 45, full, false, 6, shapeWith(s, shapeDepth)).voice;
+    if (targets.release && measure(shaped(), full).release > 0 && off("release", targets.release) > 0.2)
+      v = solve(v, (x, amt) => M.setRelease(x, targets.release * Math.exp(amt)), "release", targets.release, -2.5, 2.5, full, true, 6, shapeWith(s, shapeDepth)).voice;
+    if (targets.evolveRatio) {
+      const ratio = (f) => f.late / f.early;
+      // Relative to this voice after the other edits (a slow attack alone changes early vs late).
+      if (pass === 0) targets.evolveRatio = ratio(measure(M.shapeModulators(cloneVoice(v), { ...s, evolve: 0 }), full)) * 2 ** (1.6 * s.evolve);
+      let lo = 0, hi = 2.2, best = { d: 1, err: Infinity };
+      for (let i = 0; i < 6; i++) {
+        const d = (lo + hi) / 2;
+        const r = ratio(measure(M.shapeModulators(cloneVoice(v), s, d), full));
+        const err = Math.abs(log(r / targets.evolveRatio));
+        if (err < best.err) best = { d, err };
+        if ((r < targets.evolveRatio) === s.evolve > 0) lo = d;
+        else hi = d;
+        if (err < 0.08) break;
+      }
+      shapeDepth = best.d;
     }
     if (off("centroid", targets.centroid) > 0.08) {
-      const r = solve(v, M.brighten, "centroid", targets.centroid, -45, 45, full, true);
+      const r = solve(v, M.brighten, "centroid", targets.centroid, -45, 45, full, true, 7, shapeWith(s, shapeDepth));
       v = r.voice;
       brightTotal += r.amount;
     }
   }
+  v = shaped();
   if (targets.attack) note(`attack ${(targets.attack * 1000).toFixed(0)} ms`);
   if (targets.decay && targets.decay < SUSTAINED) note(`decay ${targets.decay.toFixed(2)} s`);
+  if (targets.evolveRatio) note(`${s.evolve > 0 ? "opens up" : "closes down"} over ~${evolveSeconds(s.evolveTime).toFixed(1)} s`);
   if (Math.abs(brightTotal) >= 2) note(`${brightTotal > 0 ? "more" : "less"} modulation (${brightTotal > 0 ? "+" : ""}${Math.round(brightTotal)} levels)`);
 
-  const features = measure(v, full);
-  return { entry, voice: v, features, base, targets, applied, error: targetError(features, targets, base, intent) };
+  // Level last: carriers only, so the sound is unchanged apart from loudness.
+  const auto = autoLevel(v);
+  const trim = s.level < 0 ? 24 * s.level : 6 * s.level;
+  if (trim) M.carrierGain(v, trim);
+  const peak = peakLevel(v);
+  note(`level ${auto >= 0 ? "+" : ""}${auto.toFixed(1)} dB automatic${trim ? `, ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim` : ""}`);
+
+  const features = { ...measure(v, full), peak, peakDb: 20 * Math.log10(peak / 2) };
+  return { entry, voice: v, features, base, targets, applied, sliders: s, error: targetError(features, targets, s) };
 }
 
-function targetError(f, t, base, intent) {
+// The measured searches edit the unshaped voice and re-apply the modulator shaping for each
+// measurement, so shaping never compounds.
+const shapeWith = (s, depth) => (v) => M.shapeModulators(cloneVoice(v), s, depth);
+
+const HEADROOM = 2 * 10 ** (-1 / 20); // 1 dB under the level where SpaceAge and Dexed clip one voice
+
+/** Scale carriers so the loudest note sits just under the clip point. Returns the change in dB. */
+export function autoLevel(v) {
+  let total = 0;
+  for (let i = 0; i < 3; i++) {
+    const peak = peakLevel(v);
+    if (!peak) break;
+    const db = 20 * Math.log10(HEADROOM / peak);
+    // Boost only as far as the loudest carrier allows; never push past headroom.
+    const loudest = Math.max(...v.ops.filter((_, k) => operatorRoles(v.algorithm)[k].carrier).map((o) => o.level));
+    const steps = db > 0 ? Math.min(Math.floor(db / 0.75), 99 - loudest) : Math.floor(db / 0.75);
+    if (!steps) break;
+    M.carrierGain(v, steps * 0.75);
+    total += steps * 0.75;
+  }
+  return total;
+}
+
+function targetError(f, t, s) {
   let e = 1.5 * log(f.centroid / t.centroid) ** 2;
   if (t.attack) e += 0.6 * log((f.attack + 0.004) / (t.attack + 0.004)) ** 2;
   if (t.decay) e += 0.5 * log(Math.min(f.decay, 30) / Math.min(t.decay, 30)) ** 2;
   if (t.release) e += 0.4 * log(Math.max(f.release, 0.03) / t.release) ** 2;
-  const h = intent.dims.harm;
-  if (h < -0.2) e += 3 * Math.max(0, 0.25 - f.inharm) ** 2 * 10;
-  if (h > 0.2) e += 3 * Math.max(0, f.inharm - 0.05) ** 2 * 10;
+  if (t.evolveRatio) e += 0.8 * log(f.late / f.early / t.evolveRatio) ** 2;
+  if (s.harm < -0.2) e += 30 * Math.max(0, 0.25 - f.inharm) ** 2;
+  if (s.harm > 0.2) e += 30 * Math.max(0, f.inharm - 0.05) ** 2;
   return e;
 }
 
 const DESCRIPTOR = [
   ["bright", 1, "BRT"], ["bright", -1, "DARK"], ["attack", -1, "SLOW"], ["attack", 1, "HARD"],
   ["decay", -1, "SHRT"], ["decay", 1, "LONG"], ["harm", -1, "METL"], ["harm", 1, "PURE"], ["grit", 1, "GRIT"],
-  ["width", 1, "WIDE"], ["evolve", 1, "EVO"], ["vibrato", 1, "VIB"], ["release", 1, "AIRY"], ["register", -1, "DEEP"],
+  ["width", 1, "WIDE"], ["evolve", 1, "OPEN"], ["evolve", -1, "FADE"], ["vibrato", 1, "VIB"], ["release", 1, "AIRY"],
+  ["register", -1, "DEEP"], ["hollow", -1, "HOLW"], ["bark", 1, "BITE"], ["wobble", 1, "WAH"], ["scoop", 1, "SCOP"],
 ];
 
 /** Short patch name: strongest descriptor + base name, max 10 characters. */
-export function patchName(baseName, intent) {
+export function patchName(baseName, sliders) {
   let best = null;
   for (const [dim, sign, word] of DESCRIPTOR) {
-    const v = (intent.dims[dim] || 0) * sign;
-    if (v > 0.3 && (!best || v > best[0])) best = [v, word];
+    const x = (sliders[dim] || 0) * sign;
+    if (x > 0.3 && (!best || x > best[0])) best = [x, word];
   }
   const noun = baseName.replace(/[^A-Z0-9 ]/g, "").trim();
   if (!best) return cleanName(noun);
@@ -221,9 +296,23 @@ export function patchName(baseName, intent) {
   return cleanName(`${best[1]} ${short}`);
 }
 
+export const entryById = (id) => LIBRARY.find((e) => e.id === id);
+
+// A variation is a small, visible offset on a few tone sliders, so every variation can be
+// seen (and undone) in the slider panel rather than hidden inside the search.
+const VARY = { bright: 0.25, width: 0.3, bark: 0.25, evolve: 0.2, attack: 0.15 };
+export function varySliders(sliders, variation) {
+  const rand = rng(Math.imul(variation, 2654435761) ^ 0x5eed);
+  const out = { ...sliders };
+  for (const [id, amount] of Object.entries(VARY))
+    out[id] = Math.max(-1, Math.min(1, Math.round((out[id] + (rand() - 0.5) * 2 * amount) * 20) / 20));
+  return out;
+}
+
 /**
  * Design a voice. `variation` (1-99) re-rolls the choice among close candidates and
- * nudges the targets slightly. Returns the ranked candidates, best first.
+ * nudges the targets slightly. Returns the ranked candidates, best first; each carries the
+ * slider set that produced it.
  */
 export function design(prompt, { variation = 1, candidates = 6 } = {}) {
   const intent = interpret(prompt);
@@ -234,12 +323,11 @@ export function design(prompt, { variation = 1, candidates = 6 } = {}) {
     return { entry, sem, fit, pre: sem + fit + (rand() - 0.5) * 1.6 };
   }).sort((a, b) => b.pre - a.pre);
 
-  const pool = ranked.slice(0, candidates);
-  const results = pool.map((c) => {
-    const r = tailor(c.entry, intent, rand);
+  const results = ranked.slice(0, candidates).map((c) => {
+    const r = tailor(c.entry, varySliders(slidersFromIntent(intent, c.entry), variation), variation);
     // Meaning dominates: a flute request should not become a brighter-matching organ.
     const score = c.sem + 0.5 * c.fit - 1.5 * Math.min(r.error, 3) + (rand() - 0.5) * 2.5;
-    const name = patchName(c.entry.voice.name, intent);
+    const name = patchName(c.entry.voice.name, r.sliders);
     r.voice.name = name;
     return { ...r, sem: c.sem, fit: c.fit, score, name };
   });

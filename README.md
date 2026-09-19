@@ -17,6 +17,23 @@ Live application: https://dx7-patch-forge.shanesanders.chatgpt.site
 3. **Tailor it by measurement.** For the best few candidates, `macros.js` makes FM-aware edits (modulation depth on modulators, envelope contour on carriers, off-series ratios for metallic tones, and so on). `designer.js` then searches the edit amounts against rendered audio: `render.js` plays a test note, `features.js` measures spectral centroid, attack, decay, release and inharmonicity, and each search repeats until the measurement lands on the target.
 4. **Explain.** The page shows which voice it started from, which edits were applied, and the start, target and result measurements.
 
+## Shaping the sound
+
+After forging, 26 sliders in six groups (Tone, Shape, Movement, Pitch, Playing, Output) let you keep working in sound terms rather than DX7 parameters. The description sets their starting positions; 0 always means "as the starting voice has it". Every change rebuilds the voice from the starting voice plus the full slider set, so moving a slider back really undoes it. The Variation control is a small, visible offset on a few tone sliders.
+
+Each slider is an FM-aware edit, and the ones with a measurable result are searched against the renderer like the description targets:
+
+- **Tone:** brightness, hollow ↔ full (1:2 vs 1:1 modulators), metallic ↔ pure, grit (feedback), detune, brightness across the keyboard (level scaling), octave.
+- **Shape:** attack, attack bite (a modulation spike at note-on), held length, sustain level, release, timbre over time (dark → bright or bright → dark, built from modulator envelope stages 2 and 3), and change speed.
+- **Movement:** vibrato, tremolo, timbre wobble (LFO on the modulators), movement speed and movement onset. The DX7 has one LFO, so these share rate and delay. The delay can fade movement in but not out.
+- **Pitch:** scoop in from below, scoop speed, fall on release. The DX7 pitch envelope starts and ends at the same level, so a scoop also bends the release.
+- **Playing:** velocity to brightness, velocity to volume, rate scaling.
+- **Output:** level.
+
+### Level and clipping
+
+SpaceAge and Dexed scale each voice's carrier sum by 0.5 and hard-clip it at full scale, so patches with several loud carriers or strong feedback distort. Every forged voice is levelled automatically: carrier output levels are set so the loudest note (velocity 127, across the keyboard) peaks 1 dB under the clip point. Carriers set loudness without changing timbre, and feedback on a carrier is compensated. The Output level slider trims from there, and the results table shows the measured peak. The in-browser preview uses the same per-voice clip, so a patch that clips is audible before you export it.
+
 The renderer follows the msfa/Dexed envelope, output-level, velocity and keyboard-scaling math, so timing and modulation depth sit close to the hardware. It uses a sine table rather than the DX7's log-sine ROM, and approximates LFO delay and depth, so treat the in-browser preview as a close approximation.
 
 Reference descriptions and programming notes for the EMM voices: https://bobbyblues.recup.ch/yamaha_dx7/patches/EMM.html
@@ -29,12 +46,13 @@ No audio or prompt data is uploaded. Design, preview and file packaging all happ
 
 ## Project structure
 
-- `dist/index.html`, `dist/styles.css` and `dist/app.css`: interface
+- `dist/index.html` and `dist/styles.css`: interface, using the Sample Squad Media Player palette
 - `dist/js/app.js`: UI, audition keyboard, downloads
 - `dist/js/dx7.js`: voice model, the 32 algorithms, VMEM/VCED packing, SysEx read and write
 - `dist/js/render.js`: DX7-style FM renderer, used for measurement and preview
 - `dist/js/features.js`: audio measurements
 - `dist/js/language.js`: description parsing
+- `dist/js/controls.js`: slider definitions
 - `dist/js/macros.js`: FM-aware edits
 - `dist/js/designer.js`: base-voice ranking and measured tailoring
 - `dist/js/design-worker.js` and `dist/js/preview-worklet.js`: design off the main thread, real-time preview

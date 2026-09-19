@@ -1,8 +1,8 @@
 // Sound-design moves that know the algorithm: brightness lives in modulator output levels,
 // loudness contour lives in carrier envelopes. Every function mutates and returns the voice.
 
-import { operatorRoles, opRatio, clamp } from "./dx7.js";
-import { Env, LFO_HZ, lfoDelaySeconds } from "./render.js";
+import { ALGORITHMS, operatorRoles, opRatio, clamp } from "./dx7.js";
+import { Env, LFO_HZ, lfoDelaySeconds, PITCH_LEVEL, pitchOctPerSecond } from "./render.js";
 
 const roles = (v) => operatorRoles(v.algorithm);
 const carriers = (v) => roles(v).filter((r) => r.carrier).map((r) => v.ops[r.op - 1]);
@@ -32,6 +32,25 @@ const nearestRate = (fn, target) => {
 };
 export const rateForRise = (seconds) => nearestRate((r) => Math.max(RISE_TIME[r], 1e-4), Math.max(seconds, 1e-4));
 export const rateForFall = (dbPerSecond) => nearestRate(fallDbPerSecond, dbPerSecond);
+
+// Rising DX7 segments move far faster than falling ones at the same rate, so segment timing
+// is simulated rather than derived from the fall slope. Tables are cached per level pair.
+const segmentTables = new Map();
+function segmentSeconds(from, to) {
+  const key = `${from}>${to}`;
+  if (!segmentTables.has(key)) {
+    segmentTables.set(key, Array.from({ length: 100 }, (_, rate) => {
+      const e = new Env([99, rate, 99, 99], [from, to, to, 0], 127 << 5, 0, 44100);
+      while (e.ix === 0) e.next();
+      let blocks = 0;
+      while (e.ix === 1 && blocks < 200000) e.next(), blocks++;
+      return Math.max((blocks * 64) / 44100, 1e-4);
+    }));
+  }
+  return segmentTables.get(key);
+}
+/** Rate that moves an envelope from level `from` to `to` in about `seconds`. */
+export const rateForSegment = (from, to, seconds) => (from === to ? 99 : nearestRate((r) => segmentSeconds(from, to)[r], Math.max(seconds, 1e-4)));
 
 function setRatio(o, ratio) {
   if (ratio < 1) {
@@ -150,64 +169,6 @@ export function setGrit(v, g) {
   return v;
 }
 
-const lfoSpeedFor = (hz) => LFO_HZ.reduce((best, x, i) => (Math.abs(x - hz) < Math.abs(LFO_HZ[best] - hz) ? i : best), 0);
-const lfoDelayFor = (s) => {
-  let best = 0;
-  for (let d = 0; d < 100; d++) if (Math.abs(lfoDelaySeconds(d) - s) < Math.abs(lfoDelaySeconds(best) - s)) best = d;
-  return best;
-};
-
-/** amount > 0 adds vibrato (8-45 cents), < 0 removes pitch LFO. */
-export function setVibrato(v, amount) {
-  if (amount <= 0) {
-    v.lfo.pmd = Math.round(v.lfo.pmd * (1 + amount));
-    return v;
-  }
-  const cents = 8 + 37 * amount;
-  v.lfo.pms = 3;
-  v.lfo.pmd = clamp((cents / (1200 * (33 / 255))) * 99, 1, 99);
-  v.lfo.speed = lfoSpeedFor(5.5);
-  v.lfo.wave = 4;
-  v.lfo.delay = lfoDelayFor(0.35);
-  v.lfo.sync = 0;
-  return v;
-}
-
-/** amount > 0 adds amplitude tremolo on the carriers, < 0 removes it. */
-export function setTremolo(v, amount) {
-  if (amount <= 0) {
-    v.lfo.amd = Math.round(v.lfo.amd * (1 + amount));
-    return v;
-  }
-  v.lfo.amd = clamp(15 + 45 * amount, 0, 99);
-  for (const o of carriers(v)) o.ams = Math.max(o.ams, 2);
-  v.lfo.speed = lfoSpeedFor(4.5);
-  v.lfo.wave = 4;
-  v.lfo.delay = 0;
-  return v;
-}
-
-/** Timbre that opens up over seconds: modulators start lower and swell. */
-export function setEvolve(v, amount) {
-  if (amount <= 0) return v;
-  for (const r of activeModulators(v)) {
-    const o = v.ops[r.op - 1];
-    const peak = Math.max(o.levels[0], o.levels[1]);
-    o.levels[0] = clamp(peak - 22 * amount, 0, 99);
-    o.levels[1] = peak;
-    o.levels[2] = Math.max(o.levels[2], peak - 6);
-    o.rates[0] = Math.min(o.rates[0], clamp(55 - 25 * amount, 1, 99));
-    o.rates[1] = Math.min(o.rates[1], clamp(30 - 12 * amount, 1, 99));
-  }
-  if (!v.lfo.pmd) {
-    v.lfo.pmd = 3;
-    v.lfo.pms = Math.max(v.lfo.pms, 3);
-    v.lfo.speed = lfoSpeedFor(1.2);
-    v.lfo.wave = 0;
-  }
-  return v;
-}
-
 export function shiftOctaves(v, octaves) {
   v.transpose = clamp(v.transpose + 12 * octaves, 0, 48);
   return v;
@@ -226,12 +187,204 @@ export function setWidth(v, w) {
   return v;
 }
 
-export function setDynamics(v, d) {
+/** Relative move: x > 0 goes from a toward max, x < 0 goes from a toward 0. */
+const rel = (a, x, max) => (x >= 0 ? a + (max - a) * x : a * (1 + x));
+
+/**
+ * Shift the carriers' output level by `db` (0.75 dB per level step). Carriers only change
+ * loudness, not timbre, except a carrier that also feeds back on itself: its feedback
+ * weakens as its level drops, so feedback is raised one step per 6 dB to compensate.
+ */
+export function carrierGain(v, db) {
+  const steps = Math.round(db / 0.75);
+  if (!steps) return v;
   const rs = roles(v);
+  const fbRole = rs[ALGORITHMS[v.algorithm].fb - 1];
   for (const r of rs) {
     const o = v.ops[r.op - 1];
-    if (d > 0) o.velSens = Math.max(o.velSens, Math.round(r.carrier ? 1 + 2 * d : 3 + 4 * d));
-    else o.velSens = Math.round(o.velSens * (1 + d));
+    if (r.carrier && o.level > 0) o.level = clamp(o.level + steps, 1, 99);
   }
+  if (fbRole.carrier && v.feedback) v.feedback = clamp(v.feedback - Math.round((steps * 0.75) / 6), 0, 7);
+  return v;
+}
+
+/** Hollow (x < 0): main modulators at twice their carrier's ratio (odd harmonics). Full (x > 0): same ratio (every harmonic). */
+export function setBody(v, x) {
+  if (Math.abs(x) < 0.15) return v;
+  const rs = roles(v);
+  for (const c of rs.filter((r) => r.carrier && v.ops[r.op - 1].mode === 0 && v.ops[r.op - 1].level > 0)) {
+    const carrier = v.ops[c.op - 1];
+    const mods = rs
+      .filter((r) => r.targets.includes(c.op) && v.ops[r.op - 1].level > 0 && v.ops[r.op - 1].mode === 0)
+      .sort((p, q) => v.ops[q.op - 1].level - v.ops[p.op - 1].level);
+    for (const m of mods.slice(0, Math.abs(x) > 0.6 ? mods.length : 1)) setRatio(v.ops[m.op - 1], opRatio(carrier) * (x < 0 ? 2 : 1));
+  }
+  return v;
+}
+
+/**
+ * Brightness over time, shaped in the modulator envelopes. The four DX7 stages are used as
+ *   L4 -> L1  attack bite (a spike above the starting brightness)
+ *   L1 -> L2  settle quickly to the starting brightness
+ *   L2 -> L3  move slowly to the ending brightness (timbre over time)
+ * evolve: +1 dark->bright, -1 bright->dark. evolveTime: -1 about 0.3 s, +1 about 6 s.
+ * bark: +1 adds a strong spike, -1 removes any existing one. `depth` scales the evolve
+ * swing so the designer can search it against measurement.
+ */
+export function shapeModulators(v, { evolve = 0, evolveTime = 0, bark = 0 }, depth = 1) {
+  if (Math.abs(evolve) < 0.05 && Math.abs(bark) < 0.05) return v;
+  const seconds = 0.3 * 20 ** ((evolveTime + 1) / 2);
+  const swing = 32 * Math.abs(evolve) * depth;
+  for (const m of activeModulators(v)) {
+    const o = v.ops[m.op - 1];
+    const weight = m.depth === 1 ? 1 : 0.7;
+    let [l1, l2, l3] = o.levels;
+    const spike0 = Math.max(0, l1 - l2);
+    const w = Math.round(swing * weight);
+    if (Math.abs(evolve) >= 0.05 && w > 0) {
+      const settled = Math.max(l2, l3);
+      // Swing around the current level, half darker and half brighter, so mellow voices with
+      // quiet modulators can still open up. Levels above 99 are handled below.
+      const dark = Math.max(0, settled - Math.ceil(w / 2)), bright = settled + Math.floor(w / 2);
+      [l2, l3] = evolve > 0 ? [dark, bright] : [bright, dark];
+      o.rates[2] = rateForSegment(clamp(l2, 0, 99), clamp(l3, 0, 99), seconds);
+      // Reach the starting brightness promptly; a slow first stage would swallow the movement.
+      o.rates[0] = Math.max(o.rates[0], 75);
+    }
+    const spike = bark > 0 ? Math.max(spike0, Math.round(30 * bark * weight)) : Math.round(spike0 * (1 + Math.min(0, bark)));
+    l1 = l2 + spike;
+    if (bark > 0) {
+      o.rates[0] = 99;
+      o.rates[1] = clamp(68 - 14 * bark, 1, 99); // a bigger bite also lasts a little longer
+      o.velSens = clamp(o.velSens + 2 * bark, 0, 7);
+    }
+    // Keep levels in range by trading envelope level for output level (both 0.75 dB a step).
+    const shift = Math.min(Math.max(0, Math.max(l1, l2, l3) - 99), 99 - o.level);
+    o.level += shift;
+    o.levels = [l1 - shift, l2 - shift, l3 - shift, o.levels[3]].map((x) => clamp(x, 0, 99));
+  }
+  return v;
+}
+
+const lfoSpeedFor = (hz) => LFO_HZ.reduce((best, x, i) => (Math.abs(x - hz) < Math.abs(LFO_HZ[best] - hz) ? i : best), 0);
+const lfoDelayFor = (s) => {
+  let best = 0;
+  for (let d = 0; d < 100; d++) if (Math.abs(lfoDelaySeconds(d) - s) < Math.abs(lfoDelaySeconds(best) - s)) best = d;
+  return best;
+};
+const AMS = [0, 0.259, 0.427, 1];
+const PMS = [0, 10, 20, 33, 55, 92, 153, 255];
+const nearestAms = (depth) => AMS.reduce((best, x, i) => (Math.abs(x - depth) < Math.abs(AMS[best] - depth) ? i : best), 0);
+
+/** Current LFO effects: vibrato in cents, tremolo and timbre-wobble depth 0..1, rate and delay. */
+export function lfoState(v) {
+  const rs = roles(v);
+  const amd = v.lfo.amd / 99;
+  const maxAms = (isCarrier) =>
+    Math.max(0, ...rs.filter((r) => r.carrier === isCarrier && v.ops[r.op - 1].level > 0).map((r) => AMS[v.ops[r.op - 1].ams]));
+  return {
+    cents: 1200 * (v.lfo.pmd / 99) * (PMS[v.lfo.pms] / 255),
+    tremolo: amd * maxAms(true),
+    wobble: amd * maxAms(false),
+    hz: LFO_HZ[v.lfo.speed],
+    delay: lfoDelaySeconds(v.lfo.delay),
+  };
+}
+
+/**
+ * The single DX7 LFO. Vibrato is pitch depth; tremolo is amplitude depth on carriers; timbre
+ * wobble is the same amplitude LFO on modulators. All three share rate and delay.
+ */
+export function setMovement(v, { vibrato = 0, tremolo = 0, wobble = 0, lfoRate = 0, onset = 0 }) {
+  const s = lfoState(v);
+  const wasIdle = !s.cents && !s.tremolo && !s.wobble;
+  const cents = rel(s.cents, vibrato, Math.max(s.cents, 50));
+  const trem = rel(s.tremolo, tremolo, Math.max(s.tremolo, 0.6));
+  const wob = rel(s.wobble, wobble, Math.max(s.wobble, 0.8));
+  if (vibrato) {
+    v.lfo.pms = cents > 150 ? 5 : 3;
+    v.lfo.pmd = clamp((cents / (1200 * (PMS[v.lfo.pms] / 255))) * 99, 0, 99);
+  }
+  if (tremolo || wobble) {
+    const amd = Math.max(trem, wob);
+    v.lfo.amd = clamp(amd * 99, 0, 99);
+    for (const r of roles(v)) {
+      const o = v.ops[r.op - 1];
+      if (o.level) o.ams = amd > 0 ? nearestAms((r.carrier ? trem : wob) / amd) : 0;
+    }
+  }
+  if (wasIdle && (v.lfo.pmd || v.lfo.amd)) {
+    // A fresh LFO gets a musical default: about 5.5 Hz sine, free-running.
+    v.lfo.speed = lfoSpeedFor(5.5);
+    v.lfo.wave = 4;
+    v.lfo.sync = 0;
+  }
+  if (lfoRate) v.lfo.speed = lfoSpeedFor(Math.min(30, Math.max(0.1, LFO_HZ[v.lfo.speed] * 4 ** lfoRate)));
+  if (onset) v.lfo.delay = lfoDelayFor(rel(s.delay, onset, Math.max(s.delay, 3)));
+  return v;
+}
+
+const pitchRateFor = (octPerSecond) => {
+  let best = 0;
+  for (let r = 0; r < 100; r++)
+    if (Math.abs(Math.log(pitchOctPerSecond(r) / octPerSecond)) < Math.abs(Math.log(pitchOctPerSecond(best) / octPerSecond))) best = r;
+  return best;
+};
+
+/**
+ * Scoop into pitch from below at note-on and/or fall away at key-up. The DX7 pitch envelope
+ * starts and ends at level L4, so both gestures share one depth.
+ */
+export function setPitchShape(v, { scoop = 0, scoopTime = 0, fall = 0 }) {
+  if (Math.abs(scoop) < 0.05 && Math.abs(fall) < 0.05) return v;
+  const eg = v.pitchEg;
+  const depth0 = Math.max(0, 50 - eg.levels[3]);
+  let depth = Math.round(rel(depth0, scoop, Math.max(depth0, 12)));
+  if (fall > 0) depth = Math.max(depth, Math.round(8 * fall));
+  eg.levels = [50, 50, 50, 50 - depth];
+  if (!depth) {
+    eg.rates = [99, 99, 99, 99];
+    return v;
+  }
+  const oct = Math.abs(PITCH_LEVEL[50 - depth] / 32);
+  const scoopSeconds = scoop > 0 ? 0.04 * 12 ** ((scoopTime + 1) / 2) : 0.001;
+  const fallSeconds = fall > 0 ? 0.9 - 0.8 * fall : 3 - 2 * fall;
+  eg.rates = [pitchRateFor(oct / scoopSeconds), 99, 99, pitchRateFor(oct / fallSeconds)];
+  return v;
+}
+
+/** Velocity response: modulators (brightness) and carriers (volume). */
+export function setVelocity(v, { velBright = 0, velLoud = 0 }) {
+  for (const r of roles(v)) {
+    const o = v.ops[r.op - 1];
+    const x = r.carrier ? velLoud : velBright;
+    if (x) o.velSens = clamp(rel(o.velSens, x, 7), 0, 7);
+  }
+  return v;
+}
+
+/** Keyboard level scaling on the modulators: x < 0 darkens high notes, x > 0 brightens them. */
+export function setKeyTracking(v, x) {
+  if (Math.abs(x) < 0.05) return v;
+  for (const m of activeModulators(v)) {
+    const o = v.ops[m.op - 1];
+    o.breakpoint = 39;
+    o.rightCurve = x < 0 ? 1 : 2;
+    o.rightDepth = clamp(60 * Math.abs(x), 0, 99);
+  }
+  return v;
+}
+
+/** Envelope rate scaling: higher notes run their envelopes faster. */
+export function setRateScaling(v, x) {
+  if (Math.abs(x) < 0.05) return v;
+  for (const o of v.ops) if (o.level) o.rateScaling = clamp(rel(o.rateScaling, x, 7), 0, 7);
+  return v;
+}
+
+/** Carrier sustain level while held. */
+export function setSustain(v, x) {
+  if (Math.abs(x) < 0.05) return v;
+  for (const o of carriers(v)) o.levels[2] = clamp(rel(o.levels[2], x, 99), 0, 99);
   return v;
 }

@@ -8,6 +8,7 @@ import { renderNote, LFO_HZ } from "./render.js";
 const ANALYSIS = { note: 60, velocity: 100, sampleRate: 22050, hold: 2, tail: 1.5 };
 const FRAME = 256;
 const FFT_SIZE = 4096;
+const BITE_WINDOW = 0.12; // seconds after the attack treated as transient
 
 function fft(re, im) {
   const n = re.length;
@@ -110,6 +111,32 @@ export function referenceRatio(voice) {
   return lowest;
 }
 
+/** Spectral centroid (in multiples of fRef) of up to `count` FFT frames starting at `start`, ending by `end`. */
+function centroidOver(samples, start, end, count, sampleRate, fRef) {
+  const binHz = sampleRate / FFT_SIZE;
+  let total = 0, weighted = 0;
+  const minBin = Math.max(1, Math.floor(20 / binHz));
+  start = Math.max(0, Math.min(start, end - FFT_SIZE));
+  for (let s = start, n = 0; s + FFT_SIZE <= Math.max(end, start + FFT_SIZE) && n < count; s += FFT_SIZE / 2, n++) {
+    const m = magnitudeSpectrum(samples, s);
+    for (let i = minBin; i < m.length; i++) (total += m[i]), (weighted += m[i] * i * binHz);
+  }
+  return total > 0 ? weighted / total / fRef : 1;
+}
+
+/**
+ * Loudest per-voice output across the keyboard at full velocity, on msfa's scale where one
+ * carrier at full level peaks at 2.0. SpaceAge (and Dexed) hard-clip a voice above that.
+ */
+export function peakLevel(voice, notes = [36, 48, 60, 72, 84]) {
+  let peak = 0;
+  for (const note of notes) {
+    const { samples } = renderNote(voice, { note, velocity: 127, sampleRate: 22050, hold: 0.7, tail: 0.1 });
+    for (const x of samples) if (Math.abs(x) > peak) peak = Math.abs(x);
+  }
+  return peak;
+}
+
 /**
  * Measure a voice. Returns:
  *  centroid  spectral centroid of the note body, in multiples of the reference fundamental
@@ -119,6 +146,7 @@ export function referenceRatio(voice) {
  *  release   seconds to fall 30 dB after key-up
  *  inharm    fraction of spectral energy away from the harmonic series (0 = perfectly harmonic)
  *  grit      fraction of energy above the 16th harmonic
+ *  early     centroid just after the attack; late: centroid at the end of the hold (timbre over time)
  *  vibrato   peak LFO pitch depth in cents (from parameters)
  *  tremolo   peak LFO amplitude depth in dB (from parameters)
  */
@@ -140,11 +168,12 @@ export function measure(voice, opts = {}) {
   const sustain = env[releaseFrame - 1] - peak;
   const release = env[releaseFrame - 1] < peak - 60 ? 0 : fallTime(env, releaseFrame, env.length, 30, frameSec);
 
-  // Spectrum of the note body: a few frames starting at the attack point.
+  // Spectrum of the note body: a few frames starting just after the attack, so an attack
+  // transient (measured separately as `early`) does not count as overall brightness.
   const fRef = f0 * referenceRatio(voice);
   const binHz = sampleRate / FFT_SIZE;
   const body = new Float64Array(FFT_SIZE / 2);
-  const startSample = Math.max(0, Math.min(releaseAt - FFT_SIZE, Math.round(attack * sampleRate)));
+  const startSample = Math.max(0, Math.min(releaseAt - FFT_SIZE, Math.round((attack + BITE_WINDOW) * sampleRate)));
   const hop = FFT_SIZE / 2;
   let frames = 0;
   for (let s = startSample; s + FFT_SIZE <= releaseAt && frames < 4; s += hop, frames++) {
@@ -168,11 +197,17 @@ export function measure(voice, opts = {}) {
     if (hz > 16 * f0) high += p;
   }
   const centroid = total > 0 ? weighted / total / fRef : 1;
+  // A fixed time (default just after note-on, or the end of a known slow attack), so the
+  // window does not wander as edits change the measured attack.
+  const early = centroidOver(samples, Math.round((o.earlyAt ?? 0.02) * sampleRate), releaseAt, 1, sampleRate, fRef);
+  const late = centroidOver(samples, releaseAt - Math.round(0.4 * sampleRate), releaseAt, 2, sampleRate, fRef);
   const l = voice.lfo;
   const PMS = [0, 10, 20, 33, 55, 92, 153, 255];
   const maxAms = Math.max(...voice.ops.map((op, i) => (operatorRoles(voice.algorithm)[i].carrier ? op.ams : 0)));
   return {
     centroid,
+    early,
+    late,
     attack,
     decay,
     sustain,

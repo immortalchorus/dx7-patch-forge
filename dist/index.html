@@ -3,14 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#080b0f">
+  <meta name="theme-color" content="#111111">
   <title>OPERATOR — DX7 Patch Forge</title>
   <meta name="description" content="Describe a sound, hear it, and export a DX7 voice for SpaceAge 80s FM, Dexed or Yamaha hardware.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <main class="shell">
@@ -43,6 +42,16 @@
           <div class="interpret-head"><span>INTERPRETATION</span><small id="matchCount">—</small></div>
           <div id="cueChips" class="trait-chips"></div>
           <p id="interpretNote">Instrument words choose a starting voice; describing words set measurable targets for brightness, attack, decay, release, tuning and movement.</p>
+        </div>
+
+        <div class="shaper">
+          <div class="interpret-head"><span>03 / SHAPE THE SOUND</span><small id="shaperStatus">0 = starting voice</small></div>
+          <div class="group-tabs" id="groupTabs" role="tablist" aria-label="Control groups"></div>
+          <div id="sliders" class="sliders"></div>
+          <div class="shaper-actions">
+            <button id="resetDescription" title="Put every slider back where the description and variation set it">Reset to forged patch</button>
+            <button id="resetZero" title="Every slider to 0: the unmodified starting voice, auto-levelled">Starting voice</button>
+          </div>
         </div>
       </div>
 
