@@ -302,7 +302,7 @@ function showManual() {
   drawAlgorithm(v);
   drawPicker(v);
   drawOperators(v);
-  $("#whyText").textContent = "Hand edited. The measurements below are from before these edits; switch to Describe to measure the voice again.";
+  $("#whyText").textContent = "Hand edited. The measurements below are from before these edits; switch to Interactive to measure the voice again.";
   updateFileName();
 }
 
