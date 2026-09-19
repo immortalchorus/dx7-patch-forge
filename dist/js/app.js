@@ -8,6 +8,7 @@ import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
 import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, CHORDS, presetById } from "./pattern.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
+import { dbToGain, sanitizeVolume, volumeText, DEFAULT_DB } from "./monitor.js";
 import { noteName } from "./dx7-params.js";
 
 const $ = (s) => document.querySelector(s);
@@ -532,10 +533,13 @@ function connectOutput(ctx, source) {
   const predelay = ctx.createDelay(0.2);
   const convolver = ctx.createConvolver();
   convolver.normalize = false;
-  source.connect(dry).connect(ctx.destination);
-  source.connect(predelay).connect(convolver).connect(wet).connect(ctx.destination);
-  verb.nodes = { ctx, dry, wet, predelay, convolver };
+  const master = ctx.createGain();
+  source.connect(dry).connect(master);
+  source.connect(predelay).connect(convolver).connect(wet).connect(master);
+  master.connect(ctx.destination);
+  verb.nodes = { ctx, dry, wet, predelay, convolver, master };
   applyReverb();
+  applyVolume();
 }
 
 /** Rebuild the impulse for the current size and preset, and set the mix. */
@@ -557,6 +561,31 @@ function applyReverb({ rebuild = true } = {}) {
   n.wet.gain.value = mix;
   n.dry.gain.value = 1 - 0.3 * mix;
 }
+
+// Monitoring level. The meter reads the engine before this, so turning it down cannot hide
+// a patch that clips where it counts.
+let volumeDb = sanitizeVolume(localStorage.getItem("owl.volume") ?? DEFAULT_DB);
+function applyVolume() {
+  const g = verb.nodes?.master?.gain;
+  if (!g) return;
+  // A short ramp, so dragging the control does not crackle.
+  g.setTargetAtTime(dbToGain(volumeDb), verb.nodes.ctx.currentTime, 0.02);
+}
+function drawVolume() {
+  $("#volume").value = volumeDb;
+  $("#volOut").value = volumeText(volumeDb);
+  $("#volume").title = `Monitoring level: ${volumeText(volumeDb)}. It changes only what you hear, never the patch.`;
+}
+$("#volume").oninput = (e) => {
+  volumeDb = sanitizeVolume(e.target.value);
+  try {
+    localStorage.setItem("owl.volume", String(volumeDb));
+  } catch {
+    // Storage blocked; the level still applies for this session.
+  }
+  applyVolume();
+  drawVolume();
+};
 
 function drawReverb() {
   const s = verb.settings;
@@ -980,6 +1009,7 @@ $("#prompt").addEventListener("keydown", (e) => {
 document.querySelectorAll("[data-prompt]").forEach((b) => (b.onclick = () => (($("#prompt").value = b.dataset.prompt), forge())));
 buildKeyboard();
 buildTabs();
+drawVolume();
 drawReverb();
 drawLoopControls();
 drawRoll();

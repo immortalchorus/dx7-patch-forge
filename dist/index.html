@@ -27,7 +27,7 @@
         <p class="eyebrow">01 / SOUND DESCRIPTION</p>
         <h1>Turn words into<br><em>frequency modulation.</em></h1>
         <label for="prompt">Describe the patch</label>
-        <textarea id="prompt" maxlength="300" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Cold glass bells, distant and luminous, with a slow attack and a long metallic decay</textarea>
+        <textarea id="prompt" maxlength="300" placeholder="e.g. a cold, glassy bell with a slow bloom and a dark metallic tail">Tine electric piano, clean ballad sound, medium decay</textarea>
         <div class="suggestions" aria-label="Sound suggestions">
           <button data-prompt="Warm touch-sensitive Wurlitzer electric piano, soft when played gently and bright when played hard">Dynamic Wurlitzer</button>
           <button data-prompt="Classic bright 80s DX tine electric piano with a glassy bell attack">80s tine EP</button>
@@ -82,6 +82,7 @@
             <div class="audition-controls">
               <button id="octDown" aria-label="Octave down">−</button><output id="octOut">C3</output><button id="octUp" aria-label="Octave up">+</button>
               <label>VEL <input id="velocity" type="range" min="20" max="127" value="100"></label>
+              <label>VOL <input id="volume" type="range" min="-48" max="6" step="1" value="-6" aria-label="Monitoring level"><output id="volOut">-6 dB</output></label>
             </div>
           </div>
           <div id="keyboard" class="keyboard" aria-label="Preview keyboard"></div>
