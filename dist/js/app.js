@@ -6,6 +6,8 @@ import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
+import { defaultPattern, sanitizePattern, PRESETS, DIVISIONS, CHORDS, presetById } from "./pattern.js";
+import { noteName } from "./dx7-params.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -392,18 +394,20 @@ function ensureAudio() {
       if (!ctx.audioWorklet) throw new Error("AudioWorklet unavailable");
       await ctx.audioWorklet.addModule(new URL("./preview-worklet.js", import.meta.url));
       const node = new AudioWorkletNode(ctx, "fm-preview", { outputChannelCount: [2] });
+      node.port.onmessage = ({ data }) => engineEvent(data);
       node.connect(ctx.destination);
       audio = { ctx, send: (m) => node.port.postMessage(m), mode: "worklet" };
     } catch (err) {
       console.warn("Audio worklet failed to load; using the main-thread preview instead.", err);
       const { PreviewEngine } = await import("./preview-engine.js");
-      const engine = new PreviewEngine(ctx.sampleRate);
+      const engine = new PreviewEngine(ctx.sampleRate, engineEvent);
       const node = ctx.createScriptProcessor(1024, 0, 2);
       node.onaudioprocess = (e) => engine.render([e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)]);
       node.connect(ctx.destination);
       audio = { ctx, send: (m) => engine.message(m), mode: "main-thread", node };
     }
     sendVoice();
+    audio.send({ type: "pattern", pattern: loop.pattern });
     return audio;
   })();
   audioSetup.catch(() => (audioSetup = null));
@@ -469,6 +473,196 @@ addEventListener("keyup", (e) => {
 });
 $("#octDown").onclick = () => ((octave = Math.max(1, octave - 1)), buildKeyboard());
 $("#octUp").onclick = () => ((octave = Math.min(7, octave + 1)), buildKeyboard());
+
+// ---------------------------------------------------------------- audition loop
+// A short pattern that keeps playing while the voice is edited, so a change can be heard as
+// it is made rather than remembered across a gap. The transport lives in the audio engine;
+// this is only the editor for it. Nothing here is saved into a patch.
+const LOOP_KEY = "owl.loop";
+const ROWS = 25; // two octaves of the roll
+const BLACK = new Set([1, 3, 6, 8, 10]);
+const loop = { pattern: loadPattern(), playing: false, base: 48, head: -1 };
+
+function loadPattern() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOOP_KEY));
+    if (saved) return sanitizePattern(saved);
+  } catch {
+    // Unavailable or corrupt storage: start from the default pattern.
+  }
+  return defaultPattern();
+}
+function savePattern() {
+  try {
+    localStorage.setItem(LOOP_KEY, JSON.stringify(loop.pattern));
+  } catch {
+    // Storage blocked; the pattern still works for this session.
+  }
+}
+/** Send the edited pattern to the engine: the loop picks it up without stopping. */
+function pushPattern() {
+  audio?.send({ type: "pattern", pattern: loop.pattern });
+  savePattern();
+}
+
+function engineEvent(e) {
+  if (e.type !== "playhead") return;
+  if (e.step !== loop.head) {
+    loop.head = e.step;
+    document.querySelectorAll("#roll .rcol, #velLane .vbar").forEach((el) => el.classList.toggle("head", +el.dataset.i === e.step));
+  }
+  const peak = Math.min(1, e.peak || 0);
+  $("#loopMeter").style.width = `${(peak * 100).toFixed(1)}%`;
+  $("#loopMeter").classList.toggle("hot", peak > 0.9);
+  $("#loopClip").classList.toggle("on", (e.peak || 0) >= 1);
+}
+
+function drawLoopControls() {
+  const p = loop.pattern;
+  $("#loopPreset").innerHTML = `<option value="">Custom</option>` + PRESETS.map((x) => `<option value="${x.id}">${esc(x.label)}</option>`).join("");
+  $("#loopDivision").innerHTML = DIVISIONS.map((d) => `<option value="${d.id}" ${d.id === p.division ? "selected" : ""}>${esc(d.label)}</option>`).join("");
+  $("#loopChord").innerHTML = CHORDS.map((c) => `<option value="${c.id}" ${c.id === p.chord ? "selected" : ""}>${esc(c.label)}</option>`).join("");
+  $("#loopBpm").value = p.bpm;
+  $("#loopGate").value = Math.round(p.gate * 100);
+  $("#loopGateOut").value = `${Math.round(p.gate * 100)}%`;
+}
+
+function drawRoll() {
+  const p = loop.pattern;
+  const notes = p.steps.map((s) => s.note).filter((n) => n != null);
+  // Keep the written notes in view: follow them, in whole octaves.
+  if (notes.length) {
+    const lo = Math.min(...notes), hi = Math.max(...notes);
+    // Leave a little room under the lowest note rather than parking it on the bottom edge.
+    if (lo < loop.base || hi > loop.base + ROWS - 1) loop.base = Math.max(0, Math.min(103, Math.floor(Math.max(0, lo - 4) / 12) * 12));
+  }
+  // A label column so the roll can be read at a glance: octave Cs, named as the DX7 names them.
+  const labels = Array.from({ length: ROWS }, (_, r) => {
+    const note = loop.base + (ROWS - 1 - r);
+    return `<i class="rlabel">${note % 12 === 0 ? noteName(note) : ""}</i>`;
+  }).join("");
+  $("#roll").innerHTML = `<div class="rlabels">${labels}</div>` + p.steps
+    .map((s, i) => {
+      const cells = Array.from({ length: ROWS }, (_, r) => {
+        const note = loop.base + (ROWS - 1 - r);
+        const cls = `rcell${BLACK.has(note % 12) ? " black" : ""}${s.note === note ? " on" : ""}`;
+        return `<i class="${cls}" data-note="${note}"></i>`;
+      }).join("");
+      const above = s.note != null && s.note > loop.base + ROWS - 1;
+      const below = s.note != null && s.note < loop.base;
+      return `<div class="rcol${i === loop.head ? " head" : ""}" data-i="${i}">${cells}${
+        above || below ? `<u class="off-roll" title="${noteName(s.note)}, outside the visible range">${above ? "↑" : "↓"}</u>` : ""
+      }</div>`;
+    })
+    .join("");
+  $("#velLane").innerHTML = p.steps
+    .map(
+      (s, i) =>
+        `<div class="vbar${s.note == null ? " rest" : ""}${i === loop.head ? " head" : ""}" data-i="${i}" role="slider" tabindex="0"
+        aria-label="Step ${i + 1} velocity" aria-valuemin="1" aria-valuemax="127" aria-valuenow="${s.vel}" title="Velocity ${s.vel}"><b style="height:${(s.vel / 127) * 100}%"></b></div>`,
+    )
+    .join("");
+  $("#tieLane").innerHTML = p.steps
+    .map((s, i) => `<button class="tie${s.tie ? " on" : ""}" data-i="${i}" aria-pressed="${s.tie}" title="Hold the note before it through step ${i + 1}">hold</button>`)
+    .join("");
+}
+
+function editPattern(change) {
+  change(loop.pattern);
+  loop.pattern = sanitizePattern(loop.pattern);
+  $("#loopPreset").value = "";
+  $("#loopHint").textContent = "";
+  pushPattern();
+  drawRoll();
+}
+
+$("#roll").addEventListener("click", (e) => {
+  const cell = e.target.closest(".rcell");
+  if (!cell) return;
+  const i = +cell.closest(".rcol").dataset.i;
+  const note = +cell.dataset.note;
+  editPattern((p) => (p.steps[i].note = p.steps[i].note === note ? null : note));
+});
+// Velocity: drag across the lane to draw a shape, as on a step sequencer.
+let drawingVel = false;
+const velFromEvent = (bar, y) => {
+  const r = bar.getBoundingClientRect();
+  return Math.max(1, Math.min(127, Math.round((1 - (y - r.top) / r.height) * 127)));
+};
+$("#velLane").addEventListener("pointerdown", (e) => {
+  const bar = e.target.closest(".vbar");
+  if (!bar) return;
+  drawingVel = true;
+  editPattern((p) => (p.steps[+bar.dataset.i].vel = velFromEvent(bar, e.clientY)));
+});
+$("#velLane").addEventListener("pointermove", (e) => {
+  if (!drawingVel) return;
+  const bar = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".vbar");
+  if (bar) editPattern((p) => (p.steps[+bar.dataset.i].vel = velFromEvent(bar, e.clientY)));
+});
+addEventListener("pointerup", () => (drawingVel = false));
+$("#velLane").addEventListener("keydown", (e) => {
+  const bar = e.target.closest(".vbar");
+  const delta = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+  if (!bar || !delta) return;
+  e.preventDefault();
+  editPattern((p) => (p.steps[+bar.dataset.i].vel += delta * (e.shiftKey ? 10 : 1)));
+  $(`#velLane .vbar[data-i="${bar.dataset.i}"]`)?.focus();
+});
+$("#tieLane").addEventListener("click", (e) => {
+  const b = e.target.closest(".tie");
+  if (b) editPattern((p) => (p.steps[+b.dataset.i].tie = !p.steps[+b.dataset.i].tie));
+});
+
+$("#loopPreset").onchange = (e) => {
+  const preset = presetById(e.target.value);
+  if (!preset) return;
+  loop.pattern = sanitizePattern(preset.make());
+  $("#loopHint").textContent = preset.hint;
+  pushPattern();
+  drawLoopControls();
+  $("#loopPreset").value = preset.id;
+  drawRoll();
+};
+$("#loopBpm").oninput = (e) => editPattern((p) => (p.bpm = +e.target.value || p.bpm));
+$("#loopDivision").onchange = (e) => editPattern((p) => (p.division = e.target.value));
+$("#loopChord").onchange = (e) => editPattern((p) => (p.chord = e.target.value));
+$("#loopGate").oninput = (e) => {
+  $("#loopGateOut").value = `${e.target.value}%`;
+  editPattern((p) => (p.gate = +e.target.value / 100));
+};
+$("#loopToggle").onclick = () => {
+  const body = $(".loop-body");
+  body.hidden = !body.hidden;
+  $("#loopToggle").setAttribute("aria-expanded", String(!body.hidden));
+  $("#loopToggle").textContent = body.hidden ? "Edit pattern" : "Hide pattern";
+};
+
+async function setLoopPlaying(playing) {
+  loop.playing = playing;
+  $("#loopPlay").textContent = playing ? "Stop loop" : "Play loop";
+  $("#loopPlay").setAttribute("aria-pressed", String(playing));
+  $("#loopPlay").classList.toggle("on", playing);
+  if (!playing) {
+    audio?.send({ type: "transport", playing: false });
+    return;
+  }
+  try {
+    const a = await ensureAudio();
+    if (a.ctx.state !== "running") await a.ctx.resume();
+    a.send({ type: "pattern", pattern: loop.pattern });
+    a.send({ type: "transport", playing: true });
+  } catch (err) {
+    setLoopPlaying(false);
+    $("#statusText").textContent = String(err.message || err).toUpperCase();
+  }
+}
+$("#loopPlay").onclick = () => setLoopPlaying(!loop.playing);
+addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || typing() || e.target.closest?.("button")) return;
+  e.preventDefault();
+  setLoopPlaying(!loop.playing);
+});
 
 // ---------------------------------------------------------------- downloads
 function download(bytes, name, type = "application/octet-stream") {
@@ -670,4 +864,6 @@ $("#prompt").addEventListener("keydown", (e) => {
 document.querySelectorAll("[data-prompt]").forEach((b) => (b.onclick = () => (($("#prompt").value = b.dataset.prompt), forge())));
 buildKeyboard();
 buildTabs();
+drawLoopControls();
+drawRoll();
 forge();

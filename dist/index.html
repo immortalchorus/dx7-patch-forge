@@ -86,6 +86,29 @@
           </div>
           <div id="keyboard" class="keyboard" aria-label="Preview keyboard"></div>
           <small class="hint">Click or use A W S E D F T G Y H U J K. Preview is an approximation of the DX7; your synth has the final say.</small>
+
+          <div class="loop" id="loop">
+            <div class="loop-head">
+              <button id="loopPlay" class="loop-play" aria-pressed="false">Play loop</button>
+              <span class="loop-meter" aria-label="Peak level"><i id="loopMeter"></i><em id="loopClip">CLIP</em></span>
+              <button id="loopToggle" aria-expanded="false">Edit pattern</button>
+            </div>
+            <div class="loop-body" hidden>
+              <div class="loop-controls">
+                <label>Pattern <select id="loopPreset"></select></label>
+                <label>Tempo <input id="loopBpm" type="number" min="30" max="240" step="1"><small>BPM</small></label>
+                <label>Step <select id="loopDivision"></select></label>
+                <label>Notes <select id="loopChord"></select></label>
+                <label>Gate <input id="loopGate" type="range" min="5" max="100" step="5"><output id="loopGateOut"></output></label>
+              </div>
+              <p class="loop-hint" id="loopHint"></p>
+              <div class="roll" id="roll" aria-label="Pattern notes"></div>
+              <div class="lane lane-vel" id="velLane" aria-label="Step velocity"></div>
+              <div class="lane lane-tie" id="tieLane" aria-label="Hold the previous note through this step"></div>
+              <small class="hint">Click the grid to place a note, click it again to clear it. The velocity row sets how hard each step is played;
+                <b>hold</b> extends the note before it. The loop keeps playing while you edit, so you hear changes as you make them. It is never saved into a patch.</small>
+            </div>
+          </div>
         </div>
 
         <div class="algorithm-card">
