@@ -1,4 +1,4 @@
-// Original FM voices written for DX7 Patch Forge, covering instrument families the EMM
+// Original FM voices written for OWL (Operator Workflow Lab), covering instrument families the EMM
 // set lacks. Built from standard FM recipes (1:1 stacks with feedback for saw-like tones,
 // 1:2 for odd harmonics, non-integer modulators for bells, decaying modulators for plucks).
 //
@@ -445,7 +445,7 @@ export const CORE_VOICES = D.map(([family, tags, make], i) => {
   const v = make();
   return {
     id: "core-" + i,
-    source: "DX7 Patch Forge",
+    source: "OWL",
     family,
     tags: tags.split(" "),
     voice: sanitizeVoice(brighten(v, CALIBRATION[v.name] || 0)),

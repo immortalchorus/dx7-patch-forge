@@ -1,6 +1,6 @@
-# DX7 Patch Forge
+# OWL: Operator Workflow Lab
 
-DX7 Patch Forge is a browser-based patch designer for Yamaha DX7-compatible SysEx and the native SpaceAge 80s FM synthesizer format.
+OWL (Operator Workflow Lab, formerly DX7 Patch Forge) is a browser-based patch designer for Yamaha DX7-compatible SysEx and the native SpaceAge 80s FM synthesizer format.
 
 Describe a sound in ordinary language, audition it on the built-in keyboard, and export:
 
