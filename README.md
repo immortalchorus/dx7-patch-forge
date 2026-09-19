@@ -12,7 +12,7 @@ Describe a sound in ordinary language, audition it on the built-in keyboard, and
 
 In Chrome or Edge, **Send to synth** also sends the current voice over Web MIDI to a DX7, TX802, Dexed or any compatible synth, on a chosen output and channel, optionally on every change. It sends only the single-voice dump, which lands in the synth's edit buffer, so nothing stored on the synth is overwritten. On a DX7, set SYS INFO AVAIL so it accepts SysEx.
 
-Live application: https://dx7-patch-forge.shanesanders.chatgpt.site
+Live application: https://immortalchorus.github.io/owl-operator-waveform-lab/
 
 ## How it works
 
@@ -70,7 +70,12 @@ The practices behind every control, and their sources (Power DX7, Chowning, Mart
 - `dist/js/midi.js`: Web MIDI output
 - `dist/js/voices-core.js` and `dist/js/voices-emm.js`: voice library
 - `tests/`: Node test suite
-- `.openai/hosting.json`: ChatGPT Sites deployment configuration
+- `.github/workflows/pages.yml`: tests, then deploys `dist/` to GitHub Pages on every push to `main`
+- `.openai/hosting.json`: the earlier ChatGPT Sites configuration (no longer the live host)
+
+## Hosting
+
+OWL is served by GitHub Pages from this repository. Every push to `main` runs the test suite and, if it passes, publishes `dist/` to https://immortalchorus.github.io/owl-operator-waveform-lab/. A failing test blocks the deploy, so the live site stays on the last good version. The app is plain static files, so moving to another static host (for example Cloudflare Pages) only needs `dist/` as the output directory and no build command.
 
 ## Run locally
 
