@@ -46,7 +46,8 @@ export const ALGORITHM_LAYOUT = {
 // Drawing geometry for style D: wide boxes on a fixed grid, sized for the tallest (4-row) and
 // widest (6-column) algorithms so the diagram never rescales between patches.
 const BOX_W = 51, BOX_H = 34, GAP_X = 14, GAP_Y = 16, MAX_ROWS = 4;
-export const CHART_HEIGHT = 24 + MAX_ROWS * BOX_H + (MAX_ROWS - 1) * GAP_Y + 30;
+export const chartHeight = ({ boxH = BOX_H, gapY = GAP_Y, rows = MAX_ROWS } = {}) => 24 + rows * boxH + (rows - 1) * gapY + 30;
+export const CHART_HEIGHT = chartHeight();
 
 /**
  * SVG markup for one algorithm (viewBox 0 0 width CHART_HEIGHT).
@@ -54,32 +55,33 @@ export const CHART_HEIGHT = 24 + MAX_ROWS * BOX_H + (MAX_ROWS - 1) * GAP_Y + 30;
  * the carriers, a right-angled feedback loop. Coloured by role in the app's palette.
  * colors: { fill, carrier, modulator, line, bus, feedback, dim }; silent: operators at level 0.
  */
-export function algorithmSvg(algorithm, edges, carriers, { width = 440, colors, silent = new Set() } = {}) {
+export function algorithmSvg(algorithm, edges, carriers, { width = 440, colors, silent = new Set(), scale = 1, rows = MAX_ROWS } = {}) {
   const lay = ALGORITHM_LAYOUT[algorithm];
+  const bw = BOX_W * scale, bh = BOX_H * scale, gx = GAP_X * scale, gy = GAP_Y * scale;
   const cols = Math.max(...Object.values(lay.p).map(([c]) => c)) + 1;
-  const totalW = cols * BOX_W + (cols - 1) * GAP_X;
+  const totalW = cols * bw + (cols - 1) * gx;
   const x0 = (width - totalW) / 2;
-  const busY = CHART_HEIGHT - 22;
-  const left = (op) => x0 + lay.p[op][0] * (BOX_W + GAP_X);
-  const top = (op) => busY - 12 - lay.p[op][1] * (BOX_H + GAP_Y) - BOX_H;
-  const cx = (op) => left(op) + BOX_W / 2;
+  const busY = chartHeight({ boxH: bh, gapY: gy, rows }) - 22 * scale;
+  const left = (op) => x0 + lay.p[op][0] * (bw + gx);
+  const top = (op) => busY - 12 * scale - lay.p[op][1] * (bh + gy) - bh;
+  const cx = (op) => left(op) + bw / 2;
   const f = (n) => n.toFixed(1);
-  const line = (x1, y1, x2, y2, c) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${c}" stroke-width="2"/>`;
+  const line = (x1, y1, x2, y2, c) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${c}" stroke-width="${f(2 * scale)}"/>`;
   let out = "";
-  for (const [from, to] of edges) out += line(cx(from), top(from) + BOX_H, cx(to), top(to), colors.line);
+  for (const [from, to] of edges) out += line(cx(from), top(from) + bh, cx(to), top(to), colors.line);
   const xs = carriers.map(cx);
-  for (const c of carriers) out += line(cx(c), top(c) + BOX_H, cx(c), busY, colors.bus);
+  for (const c of carriers) out += line(cx(c), top(c) + bh, cx(c), busY, colors.bus);
   if (xs.length > 1) out += line(Math.min(...xs), busY, Math.max(...xs), busY, colors.bus);
   // Feedback: up from the top edge, over the side, down, and back into the target's side.
   const [fbFrom, fbTo, side] = lay.fb;
   const s = side === "R" ? 1 : -1;
-  const outer = side === "R" ? left(fbFrom) + BOX_W + 8 : left(fbFrom) - 8;
-  const edgeX = side === "R" ? left(fbTo) + BOX_W : left(fbTo);
-  out += `<path d="M${f(cx(fbFrom) + s * BOX_W * 0.2)} ${f(top(fbFrom))} V${f(top(fbFrom) - 8)} H${f(outer)} V${f(top(fbTo) + BOX_H * 0.55)} H${f(edgeX)}" fill="none" stroke="${colors.feedback}" stroke-width="1.75"/>`;
+  const outer = side === "R" ? left(fbFrom) + bw + 8 * scale : left(fbFrom) - 8 * scale;
+  const edgeX = side === "R" ? left(fbTo) + bw : left(fbTo);
+  out += `<path d="M${f(cx(fbFrom) + s * bw * 0.2)} ${f(top(fbFrom))} V${f(top(fbFrom) - 8 * scale)} H${f(outer)} V${f(top(fbTo) + bh * 0.55)} H${f(edgeX)}" fill="none" stroke="${colors.feedback}" stroke-width="${f(1.75 * scale)}"/>`;
   for (let op = 1; op <= 6; op++) {
     const role = silent.has(op) ? colors.dim : carriers.includes(op) ? colors.carrier : colors.modulator;
-    out += `<rect x="${f(left(op))}" y="${f(top(op))}" width="${BOX_W}" height="${BOX_H}" rx="3" fill="${colors.fill}" stroke="${role}" stroke-width="1.75"/>`;
-    out += `<text x="${f(cx(op))}" y="${f(top(op) + BOX_H / 2 + 4.5)}" text-anchor="middle" fill="${role}" font-family="DM Mono, monospace" font-size="13">${op}</text>`;
+    out += `<rect x="${f(left(op))}" y="${f(top(op))}" width="${f(bw)}" height="${f(bh)}" rx="${f(3 * scale)}" fill="${colors.fill}" stroke="${role}" stroke-width="${f(1.75 * scale)}"/>`;
+    out += `<text x="${f(cx(op))}" y="${f(top(op) + bh / 2 + 4.5 * scale)}" text-anchor="middle" fill="${role}" font-family="DM Mono, monospace" font-size="${f(13 * scale)}">${op}</text>`;
   }
   return out;
 }

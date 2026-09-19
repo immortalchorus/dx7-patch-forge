@@ -35,6 +35,10 @@ Each slider is an FM-aware edit, and the ones with a measurable result are searc
 - **Playing:** velocity to brightness, velocity to volume, rate scaling.
 - **Output:** level.
 
+### Choosing the algorithm
+
+The algorithm card opens the full 32-algorithm chart. Algorithms interchangeable with the current one (Power DX7's families) are marked. Picking one remaps the voice onto it, keeping as much of the existing routing and as many operator roles as possible, and "why it sounds like this" reports how many connections survived.
+
 ### Level and clipping
 
 SpaceAge and Dexed scale each voice's carrier sum by 0.5 and hard-clip it at full scale, so patches with several loud carriers or strong feedback distort. Every forged voice is levelled automatically: carrier output levels are set so the loudest note (velocity 127, across the keyboard) peaks 1 dB under the clip point. Carriers set loudness without changing timbre, and feedback on a carrier is compensated. The Output level slider trims from there, and the results table shows the measured peak. The in-browser preview uses the same per-voice clip, so a patch that clips is audible before you export it.

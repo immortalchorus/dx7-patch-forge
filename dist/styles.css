@@ -130,6 +130,17 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 .algo-key .k-off { border-color: var(--line); }
 #algoSvg { width: 100%; height: auto; max-height: 300px; display: block; padding: 6px 0; }
 
+.algo-chart { margin-top: 10px; }
+#algoToggle { border: 1px solid var(--line); background: var(--charcoal); color: var(--text); border-radius: var(--radius); padding: 7px 12px; font: 12px var(--ui); cursor: pointer; }
+#algoToggle:hover { border-color: var(--blue); }
+.algo-grid { display: none; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 10px; background: var(--charcoal); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+.algo-chart.open .algo-grid { display: grid; }
+.algo-pick { position: relative; background: var(--charcoal-2); border: 1px solid var(--line-soft); border-radius: 4px; padding: 4px 2px 2px; cursor: pointer; }
+.algo-pick svg { width: 100%; height: auto; display: block; }
+.algo-pick i { position: absolute; top: 3px; left: 5px; font: 10px var(--mono); font-style: normal; color: var(--muted); }
+.algo-pick:hover { border-color: var(--blue); }
+.algo-pick.kin { border-color: #3d4a57; }
+.algo-pick.on { border-color: var(--orange); background: #241a12; }
 .metrics { display: grid; grid-template-columns: 1.5fr 1fr 1fr; margin-top: 10px; }
 .metrics div { padding: 14px 18px; border-right: 1px solid var(--line); }
 .metrics div:last-child { border: 0; }

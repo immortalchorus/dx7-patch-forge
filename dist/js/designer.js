@@ -12,7 +12,7 @@ import { interpret, stem } from "./language.js";
 import { measure, peakLevel } from "./features.js";
 import { neutralSliders, slidersFromIntent, registerOctaves } from "./controls.js";
 import * as M from "./macros.js";
-import { analyzeLayers, freeOperator } from "./layers.js";
+import { analyzeLayers, freeOperator, retargetAlgorithm } from "./layers.js";
 import { CORE_VOICES } from "./voices-core.js";
 import { EMM_VOICES } from "./voices-emm.js";
 
@@ -153,7 +153,16 @@ export function tailor(entry, sliders) {
   const note = (x) => applied.push(x);
   const on = (id, t = 0.1) => Math.abs(s[id]) > t;
 
-  // Structural edits first: adding a layer can change the algorithm and operator numbering.
+  // Structural edits first: they change the algorithm and operator numbering.
+  if (s.algorithm && s.algorithm !== v.algorithm) {
+    const moved = retargetAlgorithm(v, s.algorithm);
+    const was = v.algorithm;
+    Object.assign(v, moved.voice);
+    note(
+      `algorithm ${was} → ${s.algorithm} (kept ${moved.keptEdges} of ${moved.keptEdges + moved.lostEdges} connections` +
+        `${moved.newEdges ? `, ${moved.newEdges} new` : ""}${moved.carrierChanges ? `, ${moved.carrierChanges} operator role change${moved.carrierChanges > 1 ? "s" : ""}` : ""})`,
+    );
+  }
   const hammerChange = M.setHammer(v, s);
   if (hammerChange?.unavailable) note(`no hammer: ${hammerChange.unavailable}`);
   else if (hammerChange)
@@ -245,7 +254,7 @@ export function tailor(entry, sliders) {
       brightTotal += r.amount;
     }
   }
-  v = shaped();
+  v = M.avoidEnvelopeClick(shaped());
   if (targets.attack) note(`attack ${(targets.attack * 1000).toFixed(0)} ms`);
   if (targets.decay && targets.decay < SUSTAINED) note(`decay ${targets.decay.toFixed(2)} s`);
   if (targets.evolveRatio) note(`${s.evolve > 0 ? "opens up" : "closes down"} over ~${evolveSeconds(s.evolveTime).toFixed(1)} s`);

@@ -56,3 +56,19 @@ test("layer sliders move what they claim, and the brightness search keeps the ch
   const low = tailor(e, { tinePitch: -0.8 }).voice.ops[1].coarse;
   assert.ok(high > 14 && low < 14, `${low} < 14 < ${high}`);
 });
+
+test("moving to another algorithm keeps as much routing as it can, and says what it cost", async () => {
+  const { retargetAlgorithm } = await import("../dist/js/layers.js");
+  const v = entry("TINE EP").voice;
+  const same = retargetAlgorithm(v, 5);
+  assert.equal(same.lostEdges, 0);
+  assert.deepEqual(same.voice.ops, v.ops, "no reshuffle when the algorithm is unchanged");
+  const to7 = retargetAlgorithm(v, 7);
+  assert.equal(to7.lostEdges, 0);
+  assert.equal(to7.voice.algorithm, 7);
+  // Every operator is still present, just possibly renumbered.
+  assert.deepEqual(to7.voice.ops.map((o) => o.coarse).sort(), v.ops.map((o) => o.coarse).sort());
+  const r = tailor(entry("TINE EP"), { algorithm: 32 });
+  assert.equal(r.voice.algorithm, 32);
+  assert.match(r.applied[0], /algorithm 5 → 32/);
+});

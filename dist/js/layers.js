@@ -144,6 +144,46 @@ export function freeOperator(voice, preferTarget = null) {
   return null;
 }
 
+/**
+ * Move a voice onto a different algorithm, keeping as much of its structure as possible.
+ * Tries every operator permutation and keeps the one that preserves the most of what matters:
+ * which operators modulate which, and which are carriers, weighted by how loud each is.
+ * Returns { voice, keptEdges, lostEdges, newEdges, carrierChanges }.
+ */
+export function retargetAlgorithm(voice, newAlgorithm) {
+  const from = ALGORITHMS[voice.algorithm];
+  const to = ALGORITHMS[newAlgorithm];
+  const weight = (op) => 0.3 + (voice.ops[op - 1].level / 99) * 0.7;
+  let best = null;
+  for (const perm of permutations([1, 2, 3, 4, 5, 6])) {
+    const map = (o) => perm[o - 1];
+    const newEdges = new Set(to.edges.map(edgeKey));
+    let score = 0, kept = 0, lost = 0;
+    for (const [f, t] of from.edges) {
+      if (newEdges.has(edgeKey([map(f), map(t)]))) (score += 3 * weight(f)), kept++;
+      else (score -= 2 * weight(f)), lost++;
+    }
+    const mappedOld = new Set(from.edges.map(([f, t]) => edgeKey([map(f), map(t)])));
+    const added = to.edges.filter((e) => !mappedOld.has(edgeKey(e))).length;
+    score -= added;
+    let carrierChanges = 0;
+    for (let op = 1; op <= 6; op++) {
+      const wasCarrier = from.carriers.includes(op), isCarrier = to.carriers.includes(map(op));
+      if (wasCarrier === isCarrier) score += 2 * weight(op);
+      else (score -= weight(op)), carrierChanges++;
+    }
+    if (map(from.fb) === to.fb) score += 1;
+    if (!best || score > best.score) best = { score, perm, kept, lost, added, carrierChanges };
+  }
+  const v = cloneVoice(voice);
+  v.algorithm = newAlgorithm;
+  v.ops = [1, 2, 3, 4, 5, 6].map((newOp) => cloneVoice(voice.ops[best.perm.indexOf(newOp)]));
+  return { voice: v, keptEdges: best.kept, lostEdges: best.lost, newEdges: best.added, carrierChanges: best.carrierChanges };
+}
+
+/** Algorithms that swap with the given one with minimal change. */
+export const interchangeableWith = (algorithm) => familyOf(algorithm).filter((a) => a !== algorithm);
+
 /** Fixed-frequency coarse/fine for a target in Hz (10^(coarse & 3) * 10^(fine/100)). */
 export function fixedFor(hz) {
   const decade = clamp(Math.floor(Math.log10(Math.max(1, hz))), 0, 3);

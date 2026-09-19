@@ -59,3 +59,26 @@ test("hollow gives odd-harmonic 1:2 modulators", () => {
   const v = tailor(entry("WARM PAD"), { hollow: -1 }).voice;
   assert.ok(v.ops.some((o, i) => i % 2 === 1 && o.coarse === 2 && o.fine === 0));
 });
+
+test("velocity sensitivity is compensated with output level", async () => {
+  const { setVelocity } = await import("../dist/js/macros.js");
+  const { cloneVoice } = await import("../dist/js/dx7.js");
+  const base = entry("WARM PAD").voice;
+  const v = setVelocity(cloneVoice(base), { velBright: 1, velLoud: 0.5 });
+  // Operators already at full level have no headroom to compensate with.
+  const raised = v.ops.map((o, i) => [o, base.ops[i]]).filter(([o, b]) => o.velSens > b.velSens && b.level < 95);
+  assert.ok(raised.length);
+  for (const [o, b] of raised) assert.ok(o.level > b.level, "level compensates the added sensitivity");
+  assert.ok(v.ops.some((o) => o.velSens === 7));
+});
+
+test("flat envelopes are eased so they do not click on hardware", async () => {
+  const { avoidEnvelopeClick } = await import("../dist/js/macros.js");
+  const v = { ops: [{ level: 99, rates: [99, 99, 99, 99], levels: [99, 99, 99, 0] }] };
+  avoidEnvelopeClick(v);
+  assert.deepEqual(v.ops[0].rates, [99, 55, 55, 99]);
+  for (const { voice } of LIBRARY.map((x) => tailor(x, {}))) {
+    for (const o of voice.ops)
+      assert.ok(!(o.level && o.levels[0] >= 99 && o.levels[1] >= 99 && o.levels[2] >= 99 && o.rates[1] >= 95 && o.rates[2] >= 95));
+  }
+});

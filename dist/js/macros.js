@@ -360,7 +360,25 @@ export function setVelocity(v, { velBright = 0, velLoud = 0 }) {
   for (const r of roles(v)) {
     const o = v.ops[r.op - 1];
     const x = r.carrier ? velLoud : velBright;
-    if (x) o.velSens = clamp(rel(o.velSens, x, 7), 0, 7);
+    if (!x) continue;
+    const before = o.velSens;
+    o.velSens = clamp(rel(o.velSens, x, 7), 0, 7);
+    // Velocity sensitivity lowers the level at ordinary playing strength, so output level
+    // rises to compensate (Power DX7; Martin Russ puts it at roughly 5-10 per step).
+    if (o.level) o.level = clamp(o.level + (o.velSens - before) * 1.5, 1, 99);
+  }
+  return v;
+}
+
+/**
+ * A completely flat DX7 envelope (rates and levels all at maximum) can click on the
+ * hardware; easing the middle rates avoids it without changing the shape (Power DX7).
+ */
+export function avoidEnvelopeClick(v) {
+  for (const o of v.ops) {
+    if (!o.level) continue;
+    const flat = o.levels[0] >= 99 && o.levels[1] >= 99 && o.levels[2] >= 99;
+    if (flat && o.rates[1] >= 95 && o.rates[2] >= 95) (o.rates[1] = 55), (o.rates[2] = 55);
   }
   return v;
 }

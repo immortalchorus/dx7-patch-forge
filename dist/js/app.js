@@ -3,7 +3,8 @@ import { ssynthFile, parseSsynth } from "./ssynth.js";
 import { CONTROLS, GROUPS, neutralSliders } from "./controls.js";
 import { cartridgeVoices } from "./designer.js";
 import { MidiLink } from "./midi.js";
-import { algorithmSvg, CHART_HEIGHT } from "./algorithm-chart.js";
+import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
+import { interchangeableWith } from "./layers.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -195,6 +196,7 @@ function show() {
   $("#transpose").textContent = `${semis >= 0 ? "+" : ""}${semis} st`;
   $("#character").textContent = r.source.family.toUpperCase();
   drawAlgorithm(v);
+  drawPicker(v);
   drawOperators(v);
   drawWhy(r);
   drawAlternates(results);
@@ -227,6 +229,34 @@ function drawAlgorithm(v) {
     colors: { fill: tok("--black"), carrier: tok("--orange-text"), modulator: tok("--label"), line: "#6a6a72", bus: tok("--orange-text"), feedback: tok("--blue"), dim: tok("--line") },
   });
 }
+
+/** The 32-algorithm chart: pick one and the voice is remapped onto it. */
+function drawPicker(v) {
+  const css = getComputedStyle(document.documentElement);
+  const tok = (n) => css.getPropertyValue(n).trim();
+  const family = new Set(interchangeableWith(original()?.voice.algorithm ?? v.algorithm));
+  const colors = { fill: tok("--black"), carrier: tok("--orange-text"), modulator: tok("--label"), line: "#6a6a72", bus: tok("--orange-text"), feedback: tok("--blue"), dim: tok("--line") };
+  $("#algoPicker").innerHTML = Array.from({ length: 32 }, (_, i) => i + 1)
+    .map((a) => {
+      const rows = Math.max(...Object.values(ALGORITHM_LAYOUT[a].p).map(([, r]) => r)) + 1;
+      const scale = 0.42, h = chartHeight({ boxH: 34 * scale, gapY: 16 * scale, rows });
+      const alg = ALGORITHMS[a];
+      const cls = a === v.algorithm ? "on" : family.has(a) ? "kin" : "";
+      const why = a === v.algorithm ? "current algorithm" : family.has(a) ? "interchangeable with this voice's algorithm" : "different structure";
+      return `<button class="algo-pick ${cls}" data-alg="${a}" title="Algorithm ${a}: ${why}"><svg viewBox="0 0 104 ${h.toFixed(0)}" aria-hidden="true">${algorithmSvg(a, alg.edges, alg.carriers, { width: 104, colors, scale, rows })}</svg><i>${a}</i></button>`;
+    })
+    .join("");
+}
+$("#algoPicker").onclick = (e) => {
+  const b = e.target.closest(".algo-pick");
+  if (!b || !current()) return;
+  const alg = +b.dataset.alg;
+  retailor({ ...sliders(), algorithm: alg === original().voice.algorithm ? 0 : alg });
+};
+$("#algoToggle").onclick = () => {
+  const open = document.querySelector(".algo-chart").classList.toggle("open");
+  $("#algoToggle").textContent = open ? "Hide algorithms" : "Change algorithm";
+};
 
 const fmtTime = (s) => (s >= 20 ? "sustains" : s >= 1 ? `${s.toFixed(1)} s` : `${Math.round(s * 1000)} ms`);
 function drawWhy(r) {
