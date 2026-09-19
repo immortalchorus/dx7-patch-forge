@@ -51,7 +51,7 @@ worker.onerror = (e) => {
 function setBusy(busy, label = "DESIGNING + MEASURING…") {
   $("#generate").disabled = busy;
   document.body.classList.toggle("busy", busy);
-  $("#statusText").textContent = busy ? label : "DX7 VOICE ENGINE";
+  $("#statusText").textContent = busy ? label : "6-OPERATOR FM ENGINE";
 }
 
 function forge(autoVary = false) {

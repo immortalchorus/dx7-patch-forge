@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>OWL — Operator Waveform Lab</title>
-  <meta name="description" content="Describe a sound, hear it, and export a DX7 voice for SpaceAge 80s FM, Dexed or Yamaha hardware.">
+  <meta name="description" content="Describe a sound, hear it, and export a 6-operator FM voice for SpaceAge 80s FM, Dexed or vintage FM hardware.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -19,7 +19,7 @@
         <button data-view="design" aria-selected="true">Interactive</button>
         <button data-view="classic" aria-selected="false">Classic editor</button>
       </nav>
-      <div class="status"><i id="statusDot"></i> <span id="statusText">DX7 VOICE ENGINE</span></div>
+      <div class="status"><i id="statusDot"></i> <span id="statusText">6-OPERATOR FM ENGINE</span></div>
     </header>
 
     <section class="workbench" id="workbench">
@@ -130,8 +130,8 @@
           <button id="nativeDownload">Download .ssynth <span>↓</span></button>
         </div>
         <div class="alternate-downloads">
-          <button id="download" class="single-download">DX7 32-voice cartridge (.syx): this voice + 31 variations</button>
-          <button id="singleDownload" class="single-download">DX7 single voice (.syx, 163 bytes)</button>
+          <button id="download" class="single-download">32-voice cartridge (.syx): this voice + 31 variations</button>
+          <button id="singleDownload" class="single-download">Single voice (.syx, 163 bytes)</button>
         </div>
         <div class="carts">
           <div class="interpret-head"><span>CARTRIDGES</span><small id="cartStatus">Open a .syx or .ssynth file to edit its voices. The file itself is never changed.</small></div>
@@ -168,7 +168,7 @@
             <button id="midiSend" class="midi-send" hidden>Send voice</button>
           </div>
         </div>
-        <p class="compat">SpaceAge 80s FM · Yamaha DX7 / DX7II / TX802 · Dexed</p>
+        <p class="compat">Compatible with SpaceAge 80s FM · Yamaha DX7 / DX7II / TX802 · Dexed</p>
       </aside>
     </section>
 

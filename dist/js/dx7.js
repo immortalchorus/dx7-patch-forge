@@ -273,7 +273,7 @@ export function singleVoiceSysex(voice, channel = 0) {
 
 /** 32-voice cartridge SysEx: F0 43 0n 09 20 00 <4096 bytes> <checksum> F7 (4104 bytes). */
 export function cartridgeSysex(voices, channel = 0) {
-  if (voices.length !== 32) throw new Error(`A DX7 cartridge holds 32 voices, got ${voices.length}`);
+  if (voices.length !== 32) throw new Error(`A cartridge holds 32 voices, got ${voices.length}`);
   const d = voices.flatMap(packVoice);
   return new Uint8Array([0xf0, 0x43, channel & 15, 0x09, 0x20, 0x00, ...d, checksum(d), 0xf7]);
 }
@@ -291,7 +291,7 @@ export function parseSysex(bytes) {
     if (checksum(d) !== b[161]) throw new Error("Voice checksum mismatch");
     return [vcedToVoice(d)];
   }
-  throw new Error("Not a DX7 voice or cartridge dump");
+  throw new Error("Not a 6-operator FM voice or cartridge dump");
 }
 
 /**
@@ -320,7 +320,7 @@ export function readDx7File(bytes) {
       i += 162;
     }
   }
-  if (!voices.length) throw new Error("No DX7 voices found in this file");
+  if (!voices.length) throw new Error("No voices found in this file");
   return { voices, checksumErrors };
 }
 
