@@ -14,7 +14,8 @@
 export const DIMENSIONS = [
   "bright", "attack", "decay", "release", "harm", "grit", "vibrato", "tremolo", "evolve", "register", "width", "dyn",
   "hollow", "bark", "sustain", "evolveTime", "wobble", "lfoRate", "onset", "scoop", "scoopTime", "fall",
-  "velBright", "velLoud", "rateKey", "keyTrack", "level",
+  "velBright", "velLoud", "rateKey", "keyTrack", "level", "chorusSmooth",
+  "tineLevel", "tinePitch", "tineTouch", "sustainTone", "balance", "hammer", "hammerPitch", "hammerTouch",
 ];
 
 // Instrument vocabulary. Longer phrases are matched first and consume their words.
@@ -110,7 +111,11 @@ const CUES = [
   c("high pitched", { register: 1 }), c("small", { register: 0.5 }),
   // body and bite
   c("full", { hollow: 0.5 }), c("rich", { hollow: 0.6, bright: 0.2 }), c("full-bodied", { hollow: 0.8 }), c("reedy", { hollow: -0.6, bright: 0.2 }),
-  c("bark", { bark: 1 }), c("barking", { bark: 1 }), c("bite", { bark: 0.8 }), c("biting attack", { bark: 1 }), c("tine", { bark: 0.6 }),
+  c("bark", { bark: 1 }), c("barking", { bark: 1 }), c("bite", { bark: 0.8 }), c("biting attack", { bark: 1 }), c("tine", { tineLevel: 0.4 }), c("tines", { tineLevel: 0.4 }), c("sharper tines", { tineLevel: 0.8, tineTouch: 0.5 }),
+  c("hammer", { hammer: 0.7 }), c("hammer tone", { hammer: 0.8 }), c("thump", { hammer: 0.7, hammerPitch: -0.5 }), c("thud", { hammer: 0.7, hammerPitch: -0.6 }),
+  c("knock", { hammer: 0.6, hammerPitch: 0.4 }), c("solid attack", { hammer: 0.6, bark: 0.3 }), c("soft sustain", { sustainTone: -0.6 }),
+  c("sawtooth sustain", { sustainTone: 0.7 }), c("smooth chorus", { chorusSmooth: 0.7, width: 0.4 }), c("smoother chorus", { chorusSmooth: 0.9 }),
+  c("faster chorus", { width: 0.8 }), c("slow chorus", { width: -0.3 }),
   c("attack transient", { bark: 0.8 }), c("chiff", { bark: 0.6 }), c("pick", { bark: 0.6 }), c("thwack", { bark: 1 }),
   // timbre over time
   c("opens up", { evolve: 1 }), c("opening", { evolve: 0.9 }), c("gets brighter", { evolve: 1 }), c("brightens", { evolve: 1 }),

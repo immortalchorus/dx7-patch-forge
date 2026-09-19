@@ -111,6 +111,13 @@ function drawSliders() {
       const x = values[c.id] || 0;
       const changed = Math.abs(x - (desc[c.id] || 0)) > 0.005;
       const step = c.steps ? 2 / c.steps : 0.01;
+      const off = current()?.unavailable?.[c.id];
+      if (off)
+        return `<div class="slider off" title="${esc(c.hint)}">
+        <div class="slider-head"><label>${esc(c.label)}</label><output>n/a</output></div>
+        <input type="range" min="-1" max="1" value="0" disabled aria-label="${esc(c.label)} (unavailable)" style="--pos:50%">
+        <div class="slider-why">Not available: ${esc(off)}.</div>
+      </div>`;
       return `<div class="slider ${changed ? "changed" : ""}" title="${esc(c.hint)}">
         <div class="slider-head"><label for="s-${c.id}">${esc(c.label)}</label><output id="o-${c.id}">${describeValue(c, x)}</output></div>
         <input id="s-${c.id}" data-id="${c.id}" type="range" min="-1" max="1" step="${step}" value="${x}" style="--pos:${((x + 1) / 2) * 100}%">

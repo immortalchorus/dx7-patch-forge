@@ -9,6 +9,7 @@ const serialize = (r) => ({
   targets: r.targets,
   applied: r.applied,
   sliders: r.sliders,
+  unavailable: r.unavailable,
   score: r.score,
   entryId: r.entry.id,
   source: { name: r.entry.voice.name, family: r.entry.family, origin: r.entry.source },

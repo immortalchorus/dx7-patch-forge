@@ -85,6 +85,9 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 .slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--text); border: 2px solid var(--black); box-shadow: 0 0 0 1px var(--line); }
 .slider input::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--text); border: 2px solid var(--black); }
 .slider input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.slider.off { opacity: .55; }
+.slider.off input { cursor: not-allowed; }
+.slider-why { font-size: 10px; color: var(--muted); line-height: 1.35; }
 .slider-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
 .shaper-actions { display: flex; gap: 10px; margin-top: 14px; }
 .shaper-actions button { border: 1px solid var(--line); background: var(--charcoal); color: var(--text); border-radius: var(--radius); padding: 8px 12px; font: 12px var(--ui); cursor: pointer; }

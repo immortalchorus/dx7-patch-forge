@@ -3,10 +3,12 @@
 
 import { ALGORITHMS, operatorRoles, opRatio, clamp } from "./dx7.js";
 import { Env, LFO_HZ, lfoDelaySeconds, PITCH_LEVEL, pitchOctPerSecond } from "./render.js";
+import { analyzeLayers, freeOperator, makeHammer, fixedFor, isHammer } from "./layers.js";
 
 const roles = (v) => operatorRoles(v.algorithm);
 const carriers = (v) => roles(v).filter((r) => r.carrier).map((r) => v.ops[r.op - 1]);
-const activeModulators = (v) => roles(v).filter((r) => !r.carrier && v.ops[r.op - 1].level > 0);
+// Hammer operators are their own layer; general brightness and envelope edits leave them alone.
+const activeModulators = (v) => roles(v).filter((r) => !r.carrier && v.ops[r.op - 1].level > 0 && !isHammer(v.ops[r.op - 1]));
 
 /** dB per second of a falling envelope segment at rate r (msfa timing, no rate scaling). */
 export function fallDbPerSecond(r) {
@@ -387,4 +389,97 @@ export function setSustain(v, x) {
   if (Math.abs(x) < 0.05) return v;
   for (const o of carriers(v)) o.levels[2] = clamp(rel(o.levels[2], x, 99), 0, 99);
   return v;
+}
+
+// ---------------------------------------------------------------- layer edits
+// These act on one layer at a time (see layers.js and docs/research.md): the tine, the
+// sustain body, the hammer, and the chorus between parallel towers.
+
+const tineOps = (v) => analyzeLayers(v).tine.map((n) => v.ops[n - 1]);
+
+/** Tine level: output level of the tine modulators (Power DX7 tunes 58-80). */
+export function setTineLevel(v, x) {
+  for (const o of tineOps(v)) o.level = clamp(o.level + 14 * x, 30, 92);
+  return v;
+}
+
+/** Tine pitch: a lower ratio keeps the tine audible higher up the keyboard (12 vs 14). */
+export function setTinePitch(v, x) {
+  for (const o of tineOps(v)) {
+    const ratio = Math.round(opRatio(o) * 2 ** (0.35 * x));
+    o.coarse = clamp(ratio, 5, 24);
+    o.fine = 0;
+  }
+  return v;
+}
+
+/** Tine touch: velocity sensitivity of the tine alone, so hard playing gets the metallic edge. */
+export function setTineTouch(v, x) {
+  for (const o of tineOps(v)) o.velSens = clamp(rel(o.velSens, x, 7), 0, 7);
+  return v;
+}
+
+/** Sustain tone, soft to sawtooth: feedback and modulation in the sustain layers only. */
+export function setSustainTone(v, x) {
+  const L = analyzeLayers(v);
+  for (const n of L.sustain) {
+    const o = v.ops[n - 1];
+    o.level = clamp(o.level + 8 * x, 20, 92);
+  }
+  if (L.sustain.includes(L.feedbackOp) || L.towers.some((t) => t.role !== "tine" && t.ops.includes(L.feedbackOp)))
+    v.feedback = clamp(v.feedback + 3 * x, 0, 7);
+  return v;
+}
+
+/** Balance between the attack (tine) towers and the sustain towers, via their carrier levels. */
+export function setLayerBalance(v, x) {
+  const L = analyzeLayers(v);
+  for (const t of L.towers) {
+    const o = v.ops[t.carrier - 1];
+    if (!o.level) continue;
+    if (t.role === "tine") o.level = clamp(o.level + 8 * Math.min(0, x) + 4 * Math.max(0, x), 40, 99);
+    else if (t.role !== "hammer") o.level = clamp(o.level - 8 * Math.max(0, x) - 4 * Math.min(0, x), 40, 99);
+  }
+  return v;
+}
+
+/**
+ * Chorus smoothness. Detuning a modulator gives wobble rather than chorus (Power DX7,
+ * Tomlyn), so smoother pulls modulator detune to centre; rougher spreads it.
+ */
+export function setChorusSmooth(v, x) {
+  const mods = activeModulators(v).map((r) => v.ops[r.op - 1]).filter((o) => o.mode === 0);
+  if (x > 0) for (const o of mods) o.detune = 7 + Math.round((o.detune - 7) * (1 - x));
+  else mods.forEach((o, i) => (o.detune = clamp(7 + (i % 2 ? 1 : -1) * Math.round(-x * 4), 0, 14)));
+  return v;
+}
+
+/**
+ * Hammer layer (Power DX7; Tomlyn's Rhodes thud): a fixed-frequency operator with a single
+ * fast decay. amount > 0 adds or strengthens it, freeing an operator by moving to an
+ * interchangeable algorithm when none is spare; amount < 0 quietens or removes it.
+ * Returns a description of any restructuring, or null.
+ */
+export function setHammer(v, { hammer = 0, hammerPitch = 0, hammerTouch = 0 }) {
+  if (!hammer && !hammerPitch && !hammerTouch) return null;
+  let L = analyzeLayers(v);
+  let change = null;
+  const hz = Math.max(60, Math.min(400, 158.5 * 2 ** hammerPitch));
+  if (!L.hammer.length && hammer > 0) {
+    const tine = L.towers.find((t) => t.role === "tine");
+    const freed = freeOperator(v, L.towers.find((t) => t.role !== "tine")?.carrier);
+    if (!freed) return { unavailable: "no operator can be freed without changing an existing layer" };
+    const before = v.algorithm;
+    Object.assign(v, freed.voice);
+    makeHammer(v.ops[freed.freed - 1], { hz, level: 76 + 14 * hammer, velSens: 3 });
+    change = { from: before, to: v.algorithm, freed: freed.freed, merged: freed.merged, tine: !!tine };
+    L = analyzeLayers(v);
+  }
+  for (const n of L.hammer) {
+    const o = v.ops[n - 1];
+    if (hammer) o.level = hammer < 0 ? clamp(o.level * (1 + hammer), 0, 99) : change ? o.level : clamp(o.level + 10 * hammer, 0, 92);
+    if (hammerPitch) Object.assign(o, fixedFor(hz));
+    if (hammerTouch) o.velSens = clamp(rel(o.velSens, hammerTouch, 7), 0, 7);
+  }
+  return change;
 }

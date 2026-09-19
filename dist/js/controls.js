@@ -4,17 +4,26 @@
 //
 // The description sets the initial slider positions (see slidersFromIntent).
 
-export const GROUPS = ["Tone", "Shape", "Movement", "Pitch", "Playing", "Output"];
+export const GROUPS = ["Tone", "Layers", "Shape", "Movement", "Pitch", "Playing", "Output"];
 
 export const CONTROLS = [
   { id: "bright", group: "Tone", label: "Brightness", left: "Darker", right: "Brighter", hint: "Modulation depth, measured as spectral centroid at the start of the note" },
   { id: "hollow", group: "Tone", label: "Body", left: "Hollow", right: "Full", hint: "Odd-harmonic 1:2 modulators vs full-series 1:1 modulators" },
   { id: "harm", group: "Tone", label: "Tuning", left: "Metallic", right: "Pure", hint: "Modulators pushed off or snapped onto the harmonic series" },
   { id: "grit", group: "Tone", label: "Grit", left: "Smoother", right: "Grittier", hint: "Operator feedback" },
-  { id: "width", group: "Tone", label: "Detune", left: "Focused", right: "Wide", hint: "Carrier detune spread (DX7 output is mono, so this is chorus-like beating)" },
+  { id: "width", group: "Tone", label: "Chorus speed", left: "Still", right: "Faster", hint: "Opposite detune between parallel carriers: a bigger difference beats faster (DX7 output is mono, so this is beating, not stereo)" },
+  { id: "chorusSmooth", group: "Tone", label: "Chorus smoothness", left: "Wobblier", right: "Smoother", hint: "Detune on modulators causes wobble rather than chorus; smoother pulls it to centre" },
   { id: "keyTrack", group: "Tone", label: "Across the keyboard", left: "High notes darker", right: "High notes brighter", hint: "Keyboard level scaling on the modulators" },
   { id: "register", group: "Tone", label: "Octave", left: "Down", right: "Up", steps: 4, hint: "Voice transpose, up to two octaves either way" },
 
+  { id: "tineLevel", group: "Layers", label: "Tine level", left: "Less", right: "More", hint: "Output level of the metallic tine modulator only (a high-ratio, fast-decaying modulator)" },
+  { id: "tinePitch", group: "Layers", label: "Tine pitch", left: "Lower, wider range", right: "Higher, sharper", hint: "Tine ratio. Lower ratios (12) stay audible higher up the keyboard than higher ones (14)" },
+  { id: "tineTouch", group: "Layers", label: "Tine touch", left: "Less", right: "More", hint: "Velocity sensitivity of the tine alone: harder playing brings out the metallic edge" },
+  { id: "sustainTone", group: "Layers", label: "Sustain tone", left: "Soft", right: "Sawtooth", hint: "Feedback and modulation in the sustain layers only, leaving the attack alone" },
+  { id: "balance", group: "Layers", label: "Attack ↔ sustain", left: "More sustain", right: "More attack", hint: "Carrier levels of the tine tower against the sustain towers" },
+  { id: "hammer", group: "Layers", label: "Hammer", left: "Less", right: "More", hint: "A fixed-pitch operator with one fast decay. If no operator is spare, OWL moves to an interchangeable algorithm to free one" },
+  { id: "hammerPitch", group: "Layers", label: "Hammer pitch", left: "Lower thud", right: "Higher knock", hint: "Fixed frequency, about 80 to 320 Hz (100 to 200 Hz sounds most like a hammer)" },
+  { id: "hammerTouch", group: "Layers", label: "Hammer touch", left: "Less", right: "More", hint: "Velocity sensitivity of the hammer" },
   { id: "attack", group: "Shape", label: "Attack", left: "Slower", right: "Faster", hint: "Carrier rise time, measured" },
   { id: "bark", group: "Shape", label: "Attack bite", left: "Less", right: "More", hint: "A bright modulation spike at note-on that settles back, like a tine or pick" },
   { id: "decay", group: "Shape", label: "Held length", left: "Shorter", right: "Sustains", hint: "How long the note lasts while the key is down, measured" },

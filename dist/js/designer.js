@@ -12,6 +12,7 @@ import { interpret, stem } from "./language.js";
 import { measure, peakLevel } from "./features.js";
 import { neutralSliders, slidersFromIntent, registerOctaves } from "./controls.js";
 import * as M from "./macros.js";
+import { analyzeLayers, freeOperator } from "./layers.js";
 import { CORE_VOICES } from "./voices-core.js";
 import { EMM_VOICES } from "./voices-emm.js";
 
@@ -152,13 +153,33 @@ export function tailor(entry, sliders) {
   const note = (x) => applied.push(x);
   const on = (id, t = 0.1) => Math.abs(s[id]) > t;
 
-  // Direct edits first: they change timbre, so the measured searches below run after them.
+  // Structural edits first: adding a layer can change the algorithm and operator numbering.
+  const hammerChange = M.setHammer(v, s);
+  if (hammerChange?.unavailable) note(`no hammer: ${hammerChange.unavailable}`);
+  else if (hammerChange)
+    note(`algorithm ${hammerChange.from} → ${hammerChange.to} to free operator ${hammerChange.freed} for a hammer${hammerChange.merged ? ` (tower ${hammerChange.merged.from} merged into tower ${hammerChange.merged.into})` : ""}`);
+  else if (on("hammer", 0.05) || on("hammerPitch", 0.05)) note("hammer");
+
+  // Direct edits: they change timbre, so the measured searches below run after them.
   const octaves = registerOctaves(s.register);
   if (octaves) M.shiftOctaves(v, octaves), note(`${octaves > 0 ? "up" : "down"} ${Math.abs(octaves)} octave${Math.abs(octaves) > 1 ? "s" : ""}`);
   if (on("hollow", 0.15)) M.setBody(v, s.hollow), note(s.hollow < 0 ? "hollow 1:2 modulators" : "full 1:1 modulators");
   if (on("harm", 0.2)) M.setHarmonicity(v, s.harm), note(s.harm > 0 ? "purer ratios" : "inharmonic modulators");
   if (on("grit", 0.15)) M.setGrit(v, s.grit), note(`feedback ${v.feedback}`);
-  if (on("width", 0.15)) M.setWidth(v, s.width), note(s.width > 0 ? "detuned carriers" : "centred tuning");
+  if (on("width", 0.15)) M.setWidth(v, s.width), note(s.width > 0 ? "faster chorus" : "less chorus");
+  if (on("chorusSmooth", 0.1)) M.setChorusSmooth(v, s.chorusSmooth), note(s.chorusSmooth > 0 ? "smoother chorus" : "wobblier chorus");
+  // Layer edits are deliberate timbre changes: measure their effect so the overall
+  // brightness search below keeps it, and only corrects side effects (such as the extra
+  // modulation from merging towers when a hammer is added).
+  const layerIds = ["tineLevel", "tinePitch", "sustainTone", "balance"];
+  const layerEdit = layerIds.some((k) => on(k, 0.05));
+  const beforeLayers = layerEdit ? measure(v).centroid : 0;
+  if (on("tineLevel", 0.05)) M.setTineLevel(v, s.tineLevel), note(`tine ${s.tineLevel > 0 ? "louder" : "softer"}`);
+  if (on("tinePitch", 0.05)) M.setTinePitch(v, s.tinePitch), note(`tine ratio ${analyzeLayers(v).tine.map((n) => v.ops[n - 1].coarse).join("/")}`);
+  if (on("tineTouch", 0.05)) M.setTineTouch(v, s.tineTouch), note("tine velocity");
+  if (on("sustainTone", 0.05)) M.setSustainTone(v, s.sustainTone), note(`sustain ${s.sustainTone > 0 ? "more sawtooth" : "softer"}`);
+  if (on("balance", 0.05)) M.setLayerBalance(v, s.balance), note(`more ${s.balance > 0 ? "attack" : "sustain"}`);
+  if (layerEdit) targets.centroid *= measure(v).centroid / beforeLayers;
   if (on("keyTrack")) M.setKeyTracking(v, s.keyTrack), note(s.keyTrack < 0 ? "high notes darker" : "high notes brighter");
   if (on("rateKey")) M.setRateScaling(v, s.rateKey), note("rate scaling");
   if (on("velBright", 0.05) || on("velLoud", 0.05)) M.setVelocity(v, s), note("velocity response");
@@ -239,7 +260,7 @@ export function tailor(entry, sliders) {
   if (trim) note(`level ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim`);
 
   const features = { ...measure(v, full), peak, peakDb: 20 * Math.log10(peak / 2) };
-  return { entry, voice: v, features, base, targets, applied, sliders: s, error: targetError(features, targets, s) };
+  return { entry, voice: v, features, base, targets, applied, sliders: s, error: targetError(features, targets, s), unavailable: unavailableControls(entry.voice) };
 }
 
 // The measured searches edit the unshaped voice and re-apply the modulator shaping for each
@@ -306,6 +327,24 @@ export function registerEntry(entry) {
   return USER_ENTRIES.get(entry.id);
 }
 export const entryById = (id) => USER_ENTRIES.get(id) || LIBRARY.find((e) => e.id === id);
+
+/** Which layer sliders make sense for this voice: id -> reason it is unavailable. */
+export function unavailableControls(voice) {
+  const L = analyzeLayers(voice);
+  const out = {};
+  const noTine = "this voice has no tine layer (a high-ratio, fast-decaying modulator)";
+  for (const id of ["tineLevel", "tinePitch", "tineTouch"]) if (!L.tine.length) out[id] = noTine;
+  if (!L.sustain.length) out.sustainTone = "this voice has no sustain layer";
+  const tineTowers = L.towers.filter((t) => t.role === "tine").length;
+  if (!tineTowers || tineTowers === L.towers.length) out.balance = "needs a tine tower and a separate sustain tower";
+  if (!L.hammer.length && !freeOperator(voice)) {
+    const why = "every operator is in use and no interchangeable algorithm frees one without changing a layer";
+    out.hammer = out.hammerPitch = out.hammerTouch = why;
+  }
+  const ratioCarriers = L.towers.filter((t) => voice.ops[t.carrier - 1].mode === 0 && voice.ops[t.carrier - 1].level);
+  if (ratioCarriers.length < 2) out.width = "chorus needs two or more parallel carriers";
+  return out;
+}
 
 // A variation is a small, visible offset on a few tone sliders, so every variation can be
 // seen (and undone) in the slider panel rather than hidden inside the search.

@@ -23,11 +23,12 @@ Live application: https://dx7-patch-forge.shanesanders.chatgpt.site
 
 ## Shaping the sound
 
-After forging, 26 sliders in six groups (Tone, Shape, Movement, Pitch, Playing, Output) let you keep working in sound terms rather than DX7 parameters. The description sets their starting positions; 0 always means "as the starting voice has it". Every change rebuilds the voice from the starting voice plus the full slider set, so moving a slider back really undoes it. The Variation control is a small, visible offset on a few tone sliders.
+After forging, sliders in seven groups (Tone, Layers, Shape, Movement, Pitch, Playing, Output) let you keep working in sound terms rather than DX7 parameters. The description sets their starting positions; 0 always means "as the starting voice has it". Every change rebuilds the voice from the starting voice plus the full slider set, so moving a slider back really undoes it. The Variation control is a small, visible offset on a few tone sliders.
 
 Each slider is an FM-aware edit, and the ones with a measurable result are searched against the renderer like the description targets:
 
-- **Tone:** brightness, hollow ↔ full (1:2 vs 1:1 modulators), metallic ↔ pure, grit (feedback), detune, brightness across the keyboard (level scaling), octave.
+- **Tone:** brightness, hollow ↔ full (1:2 vs 1:1 modulators), metallic ↔ pure, grit (feedback), chorus speed and smoothness, brightness across the keyboard (level scaling), octave.
+- **Layers:** OWL finds the voice's layers (towers) and their roles: tine, sustain, saw-sustain, hammer. Tine level, pitch and touch, sustain tone, attack-vs-sustain balance, and a hammer (fixed-pitch, single fast decay). When no operator is spare for the hammer, OWL moves to an interchangeable algorithm that keeps the other layers' routing (for example 5 → 13, merging two sustain towers), then rebalances by measurement. Sliders a voice cannot support are shown greyed out with the reason.
 - **Shape:** attack, attack bite (a modulation spike at note-on), held length, sustain level, release, timbre over time (dark → bright or bright → dark, built from modulator envelope stages 2 and 3), and change speed.
 - **Movement:** vibrato, tremolo, timbre wobble (LFO on the modulators), movement speed and movement onset. The DX7 has one LFO, so these share rate and delay. The delay can fade movement in but not out.
 - **Pitch:** scoop in from below, scoop speed, fall on release. The DX7 pitch envelope starts and ends at the same level, so a scoop also bends the release.
@@ -48,6 +49,8 @@ Native exports contain all 186 80s FM parameters, mapped as SpaceAge's `PluginPr
 
 No audio or prompt data is uploaded. Design, preview and file packaging all happen locally in the browser.
 
+The practices behind every control, and their sources (Power DX7, Chowning, Martin Russ, Bo Tomlyn and others), are in [docs/research.md](docs/research.md).
+
 ## Project structure
 
 - `dist/index.html` and `dist/styles.css`: interface, using the Sample Squad Media Player palette
@@ -58,6 +61,8 @@ No audio or prompt data is uploaded. Design, preview and file packaging all happ
 - `dist/js/language.js`: description parsing
 - `dist/js/controls.js`: slider definitions
 - `dist/js/macros.js`: FM-aware edits
+- `dist/js/layers.js`: layer analysis and algorithm restructuring
+- `dist/js/algorithm-chart.js`: front-panel style algorithm diagrams
 - `dist/js/designer.js`: base-voice ranking and measured tailoring
 - `dist/js/design-worker.js`: design off the main thread
 - `dist/js/preview-engine.js` and `dist/js/preview-worklet.js`: real-time preview, on the audio thread when the browser allows it and on the main thread otherwise
