@@ -33,6 +33,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Pages caches JavaScript for ten minutes, and a query on the page URL does not reach the
+      # modules it imports, so a fresh page can quietly run the last deploy. Stamp every module
+      # reference with this commit; the checked-in files stay plain and still run from disk.
+      - name: Stamp module URLs with the commit
+        run: node tools/stamp.mjs dist "${{ github.sha }}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
