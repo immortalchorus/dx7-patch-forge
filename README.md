@@ -55,7 +55,8 @@ No audio or prompt data is uploaded. Design, preview and file packaging all happ
 - `dist/js/controls.js`: slider definitions
 - `dist/js/macros.js`: FM-aware edits
 - `dist/js/designer.js`: base-voice ranking and measured tailoring
-- `dist/js/design-worker.js` and `dist/js/preview-worklet.js`: design off the main thread, real-time preview
+- `dist/js/design-worker.js`: design off the main thread
+- `dist/js/preview-engine.js` and `dist/js/preview-worklet.js`: real-time preview, on the audio thread when the browser allows it and on the main thread otherwise
 - `dist/js/ssynth.js`: SpaceAge native patch writer
 - `dist/js/voices-core.js` and `dist/js/voices-emm.js`: voice library
 - `tests/`: Node test suite

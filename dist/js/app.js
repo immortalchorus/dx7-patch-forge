@@ -272,33 +272,52 @@ function updateFileName() {
 let audio = null;
 let octave = 4;
 const KEYS = "awsedftgyhujk";
-async function ensureAudio() {
-  if (audio) return audio;
-  const ctx = new AudioContext({ latencyHint: "interactive" });
-  if (!ctx.audioWorklet) throw new Error("This browser cannot run the audio preview.");
-  await ctx.audioWorklet.addModule(new URL("./preview-worklet.js", import.meta.url));
-  const node = new AudioWorkletNode(ctx, "fm-preview", { outputChannelCount: [2] });
-  node.connect(ctx.destination);
-  audio = { ctx, node };
-  sendVoice();
-  return audio;
+let audioSetup = null;
+/**
+ * Start audio on first use. The preview runs in an AudioWorklet; if the browser or host
+ * cannot load it, the same engine runs on the main thread instead, so the keyboard always
+ * sounds. audio.send() talks to whichever is running.
+ */
+function ensureAudio() {
+  audioSetup ||= (async () => {
+    const ctx = new AudioContext({ latencyHint: "interactive" });
+    try {
+      if (!ctx.audioWorklet) throw new Error("AudioWorklet unavailable");
+      await ctx.audioWorklet.addModule(new URL("./preview-worklet.js", import.meta.url));
+      const node = new AudioWorkletNode(ctx, "fm-preview", { outputChannelCount: [2] });
+      node.connect(ctx.destination);
+      audio = { ctx, send: (m) => node.port.postMessage(m), mode: "worklet" };
+    } catch (err) {
+      console.warn("Audio worklet failed to load; using the main-thread preview instead.", err);
+      const { PreviewEngine } = await import("./preview-engine.js");
+      const engine = new PreviewEngine(ctx.sampleRate);
+      const node = ctx.createScriptProcessor(1024, 0, 2);
+      node.onaudioprocess = (e) => engine.render([e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)]);
+      node.connect(ctx.destination);
+      audio = { ctx, send: (m) => engine.message(m), mode: "main-thread", node };
+    }
+    sendVoice();
+    return audio;
+  })();
+  audioSetup.catch(() => (audioSetup = null));
+  return audioSetup;
 }
 function sendVoice() {
   const r = current();
-  if (audio && r) audio.node.port.postMessage({ type: "voice", voice: r.voice });
+  if (audio && r) audio.send({ type: "voice", voice: r.voice });
 }
 async function noteOn(note) {
   try {
     const a = await ensureAudio();
     if (a.ctx.state !== "running") await a.ctx.resume();
-    a.node.port.postMessage({ type: "on", note, velocity: +$("#velocity").value });
+    a.send({ type: "on", note, velocity: +$("#velocity").value });
     document.querySelector(`[data-note="${note}"]`)?.classList.add("down");
   } catch (err) {
     $("#statusText").textContent = String(err.message || err).toUpperCase();
   }
 }
 function noteOff(note) {
-  audio?.node.port.postMessage({ type: "off", note });
+  audio?.send({ type: "off", note });
   document.querySelector(`[data-note="${note}"]`)?.classList.remove("down");
 }
 
