@@ -15,11 +15,15 @@
   <main class="shell">
     <header>
       <div class="brand"><span class="brand-mark">OWL</span><span>OPERATOR WAVEFORM LAB</span></div>
+      <nav class="views" id="viewTabs" aria-label="Editor">
+        <button data-view="design" aria-selected="true">Describe</button>
+        <button data-view="classic" aria-selected="false">Classic editor</button>
+      </nav>
       <div class="status"><i id="statusDot"></i> <span id="statusText">DX7 VOICE ENGINE</span></div>
     </header>
 
-    <section class="workbench">
-      <div class="composer">
+    <section class="workbench" id="workbench">
+      <div class="composer" id="composer">
         <p class="eyebrow">01 / SOUND DESCRIPTION</p>
         <h1>Turn words into<br><em>frequency modulation.</em></h1>
         <label for="prompt">Describe the patch</label>
@@ -53,6 +57,17 @@
             <button id="resetZero" title="Every slider to 0: the unmodified starting voice, auto-levelled">Starting voice</button>
           </div>
         </div>
+      </div>
+
+      <div class="composer classic-panel" id="classicView" hidden>
+        <p class="eyebrow">01 / CLASSIC EDITOR</p>
+        <h1>Every parameter,<br><em>as the panel names them.</em></h1>
+        <p class="cl-intro">The DX7's own list, in its own units and groups, with the panel's gestures: pick an operator,
+          switch operators off to hear one layer, copy an envelope, and compare against the voice you started from.
+          The small number on each row is the numbered button that parameter sits on in the DX7's edit mode.
+          Nothing here is measured or searched — what you set is exactly what your synth gets.</p>
+        <div id="classicRoot"></div>
+        <p class="cl-foot">Switching back to <b>Describe</b> makes this edited voice the starting voice, with every slider at 0.</p>
       </div>
 
       <aside class="result" aria-live="polite">

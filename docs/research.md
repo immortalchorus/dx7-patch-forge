@@ -97,3 +97,28 @@ Source groups:
 - No accessible source gives a programming recipe for marimba or mallets beyond Chowning's wood-drum example.
 - Chowning & Bristow's *FM Theory & Applications* (1986) and Massey's *The Complete DX7* were not accessible and were not used.
 - Algorithm interchangeability as a technique comes from one teacher (PD); OWL treats it as a hypothesis to verify by measurement on every use.
+
+## Classic editor: the panel's own parameter numbering
+
+- The DX7's edit mode puts one parameter on each of the 32 numbered buttons. The order is
+  **1–6** operator 1–6 on/off, **7** algorithm, **8** feedback, **9–14** LFO wave, speed, delay,
+  pitch mod depth, amp mod depth, key sync, **15** pitch mod sensitivity (one value for the whole
+  voice), **16** amplitude mod sensitivity (per operator), **17** oscillator mode, which alternates
+  with oscillator key sync, **18–20** frequency coarse, fine, detune, **21** EG rate (pressed again
+  for rates 2, 3, 4), **22** EG level, **23–25** keyboard level scaling break point, curve, depth
+  (curve and depth alternate left and right), **26** keyboard rate scaling, **27** operator output
+  level, **28** key velocity sensitivity, **29** pitch EG rate, **30** pitch EG level, **31** key
+  transpose, **32** voice name.
+- Operator select is its own key and steps 1→6, skipping operators that are switched off. EG copy is
+  hold STORE and press the source operator's number. EDIT/COMPARE toggles between the edit buffer and
+  the stored voice, and no parameter can be changed while comparing.
+- Operator on/off is not part of the voice data: a recalled patch always has all six on. OWL therefore
+  treats it as a listening aid and never writes it into a file or a MIDI dump.
+- The performance settings on the DX7's *function* buttons (master tune, poly/mono, pitch bend,
+  portamento, mod wheel, foot and breath control, aftertouch) are not stored in a voice either, which
+  is why nothing in OWL's editor writes them into a `.syx`.
+- Sources: DX7 owner's manual (archive.org full text; abdn.ac.uk PDF mirror), the panel-button and
+  remote-switch table `dx7-controls.pdf` (abdn.ac.uk), the DX7 operation manual p.25, chipple.net's
+  edit-mode and function-mode pages, Yamaha Black Boxes' programming guide and the VDX7 emulator's
+  README. Where djjondent's blog reverses keyboard scaling curve and depth (24/25), the manual and
+  `dx7-controls.pdf` agree on curve 24, depth 25, which is what OWL shows.

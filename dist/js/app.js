@@ -5,14 +5,16 @@ import { cartridgeVoices } from "./designer.js";
 import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
+import { createClassicEditor } from "./classic.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // response: the last design. edits[i]: the slider-edited version of candidate i, if any.
-const state = { response: null, selected: 0, request: 0, lastSignature: "", generatedName: "", variation: 42, edits: {}, group: GROUPS[0] };
+const state = { response: null, selected: 0, request: 0, lastSignature: "", generatedName: "", variation: 42, edits: {}, group: GROUPS[0], view: "design", manual: null };
 const original = () => state.response?.results[state.selected];
-const current = () => state.edits[state.selected]?.result || original();
+// In the classic editor the hand-edited voice is the voice on screen; nothing measures it.
+const current = () => state.manual || state.edits[state.selected]?.result || original();
 const sliders = () => state.edits[state.selected]?.sliders || original()?.sliders || neutralSliders();
 
 // ---------------------------------------------------------------- design worker
@@ -168,6 +170,7 @@ function patchName() {
 }
 
 function show() {
+  if (state.manual) return showManual();
   const r = current();
   const { intent, results } = state.response;
   const nameField = $("#patchName");
@@ -234,7 +237,7 @@ function drawAlgorithm(v) {
 function drawPicker(v) {
   const css = getComputedStyle(document.documentElement);
   const tok = (n) => css.getPropertyValue(n).trim();
-  const family = new Set(interchangeableWith(original()?.voice.algorithm ?? v.algorithm));
+  const family = new Set(interchangeableWith(state.manual ? v.algorithm : original()?.voice.algorithm ?? v.algorithm));
   const colors = { fill: tok("--black"), carrier: tok("--orange-text"), modulator: tok("--label"), line: "#6a6a72", bus: tok("--orange-text"), feedback: tok("--blue"), dim: tok("--line") };
   $("#algoPicker").innerHTML = Array.from({ length: 32 }, (_, i) => i + 1)
     .map((a) => {
@@ -251,12 +254,91 @@ $("#algoPicker").onclick = (e) => {
   const b = e.target.closest(".algo-pick");
   if (!b || !current()) return;
   const alg = +b.dataset.alg;
+  // In the classic editor the algorithm changes exactly as it does on the DX7: the operators
+  // stay where they are and take whatever role the new algorithm gives them.
+  if (state.manual) return classic.setAlgorithm(alg);
   retailor({ ...sliders(), algorithm: alg === original().voice.algorithm ? 0 : alg });
 };
 $("#algoToggle").onclick = () => {
   const open = document.querySelector(".algo-chart").classList.toggle("open");
   $("#algoToggle").textContent = open ? "Hide algorithms" : "Change algorithm";
 };
+
+// ---------------------------------------------------------------- classic editor
+// The classic tab hand-edits the voice: no searching, no measuring. The right-hand column
+// keeps working (keyboard, diagram, cartridges, downloads, MIDI) because it reads current().
+let classic = null;
+let midiTimer = 0;
+
+function ensureClassic() {
+  classic ||= createClassicEditor({
+    root: $("#classicRoot"),
+    onChange: (voice) => {
+      state.manual = manualResult(voice);
+      showManual();
+    },
+    onPreview: (voice) => audio?.send({ type: "voice", voice }),
+  });
+  return classic;
+}
+
+const manualResult = (voice) => ({ voice, name: voice.name, manual: true, unavailable: {} });
+
+/** The right-hand column for a hand-edited voice: everything that does not need measurements. */
+function showManual() {
+  const v = current().voice;
+  sendVoice();
+  if (midi.auto && midi.access) {
+    clearTimeout(midiTimer);
+    midiTimer = setTimeout(() => sendToSynth(true), 250);
+  }
+  $("#sourceBadge").textContent = "HAND EDITED";
+  $("#sourceBadge").title = "Edited parameter by parameter in the classic editor";
+  $("#algoNum").textContent = String(v.algorithm).padStart(2, "0");
+  $("#feedback").textContent = `${v.feedback} / 7`;
+  const semis = v.transpose - 24;
+  $("#transpose").textContent = `${semis >= 0 ? "+" : ""}${semis} st`;
+  $("#character").textContent = "CLASSIC";
+  drawAlgorithm(v);
+  drawPicker(v);
+  drawOperators(v);
+  $("#whyText").textContent = "Hand edited. The measurements below are from before these edits; switch to Describe to measure the voice again.";
+  updateFileName();
+}
+
+function setView(view) {
+  if (view === state.view) return;
+  const tabs = document.querySelectorAll("#viewTabs [data-view]");
+  tabs.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+  document.body.classList.toggle("view-classic", view === "classic");
+  $("#composer").hidden = view === "classic";
+  $("#classicView").hidden = view !== "classic";
+  state.view = view;
+  if (view === "classic") {
+    // Before the first design has finished there is nothing to edit yet, so start from INIT VOICE.
+    const base = current();
+    ensureClassic().setVoice(base ? { ...base.voice, name: patchName() } : blankVoice());
+    state.manual = manualResult(classic.voice);
+    showManual();
+  } else {
+    const edited = classic?.edited;
+    const voice = state.manual?.voice;
+    state.manual = null;
+    // Hand the edited voice to the designer as its starting voice, so the sliders and the
+    // measurements describe what is actually on screen.
+    if (edited && voice) editVoice({ ...voice, name: patchName() }, "your classic-editor edits");
+    else if (state.response) show();
+  }
+}
+$("#viewTabs").onclick = (e) => {
+  const b = e.target.closest("[data-view]");
+  if (b) setView(b.dataset.view);
+};
+addEventListener("keydown", (e) => {
+  if (state.view !== "classic" || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
+  e.preventDefault();
+  e.shiftKey ? classic.redo() : classic.undo();
+});
 
 const fmtTime = (s) => (s >= 20 ? "sustains" : s >= 1 ? `${s.toFixed(1)} s` : `${Math.round(s * 1000)} ms`);
 function drawWhy(r) {
@@ -328,8 +410,9 @@ function ensureAudio() {
   return audioSetup;
 }
 function sendVoice() {
-  const r = current();
-  if (audio && r) audio.send({ type: "voice", voice: r.voice });
+  // In the classic editor what you hear also reflects muted operators and compare.
+  const voice = state.manual ? classic.previewVoice : current()?.voice;
+  if (audio && voice) audio.send({ type: "voice", voice });
 }
 async function noteOn(note) {
   try {
@@ -457,6 +540,15 @@ function drawCarts() {
 
 /** Make a voice from a file the starting voice for editing. */
 function editVoice(voice, label) {
+  if (state.view === "classic") {
+    // The classic editor takes the voice as it is; there is nothing to measure or search.
+    ensureClassic().setVoice(sanitizeVoice(voice));
+    $("#patchName").value = classic.voice.name;
+    state.manual = manualResult(classic.voice);
+    showManual();
+    $("#cartStatus").textContent = `Editing ${label} by hand. The file itself is never changed.`;
+    return;
+  }
   state.loading = label;
   state.request++;
   setBusy(true, "LOADING + MEASURING…");
