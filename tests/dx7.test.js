@@ -58,3 +58,16 @@ test("reads cartridges, raw banks and back-to-back single voices", async () => {
   bad[4102] ^= 1;
   assert.equal(readDx7File(bad).checksumErrors, 1);
 });
+
+test("the front-panel chart places every operator and draws modulators above their targets", async () => {
+  const { ALGORITHM_LAYOUT } = await import("../dist/js/algorithm-chart.js");
+  for (let a = 1; a <= 32; a++) {
+    const lay = ALGORITHM_LAYOUT[a];
+    assert.deepEqual(Object.keys(lay.p).map(Number).sort(), [1, 2, 3, 4, 5, 6], `alg ${a}`);
+    for (const [from, to] of ALGORITHMS[a].edges) assert.ok(lay.p[from][1] > lay.p[to][1], `alg ${a} ${from}->${to}`);
+    for (const c of ALGORITHMS[a].carriers) assert.equal(lay.p[c][1], 0, `alg ${a} carrier ${c}`);
+    assert.equal(lay.fb[0], ALGORITHMS[a].fb, `alg ${a} feedback op`);
+    const cells = Object.values(lay.p).map(String);
+    assert.equal(new Set(cells).size, 6, `alg ${a} overlapping boxes`);
+  }
+});

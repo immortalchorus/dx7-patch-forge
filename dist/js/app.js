@@ -3,6 +3,7 @@ import { ssynthFile, parseSsynth } from "./ssynth.js";
 import { CONTROLS, GROUPS, neutralSliders } from "./controls.js";
 import { cartridgeVoices } from "./designer.js";
 import { MidiLink } from "./midi.js";
+import { algorithmSvg } from "./algorithm-chart.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -206,40 +207,17 @@ function drawOperators(v) {
 }
 
 function drawAlgorithm(v) {
+  // Drawn like the DX7 front-panel chart: cream boxes and lines, carriers on the output bus.
   const css = getComputedStyle(document.documentElement);
   const tok = (name) => css.getPropertyValue(name).trim();
   const alg = ALGORITHMS[v.algorithm];
-  const roles = operatorRoles(v.algorithm);
-  // Tree layout: each modulator hangs under its lowest-numbered target.
-  const parent = {};
-  for (const [from, to] of alg.edges) if (!(from in parent) || to < parent[from]) parent[from] = to;
-  const children = (op) => Object.keys(parent).map(Number).filter((m) => parent[m] === op).sort((a, b) => a - b);
-  const x = {};
-  let col = 0;
-  const place = (op) => {
-    const kids = children(op);
-    kids.forEach(place);
-    x[op] = kids.length ? kids.reduce((s, k) => s + x[k], 0) / kids.length : col++;
-  };
-  alg.carriers.forEach(place);
-  const maxDepth = Math.max(...roles.map((r) => r.depth));
-  const span = Math.max(1, col - 1);
-  const px = (op) => (col === 1 ? 220 : 50 + (x[op] / span) * 340);
-  const py = (op) => 138 - roles[op - 1].depth * Math.min(56, 116 / Math.max(1, maxDepth));
-  let lines = "";
-  for (const [from, to] of alg.edges)
-    lines += `<line x1="${px(from)}" y1="${py(from) + 16}" x2="${px(to)}" y2="${py(to) - 16}" stroke="${tok("--line")}" stroke-width="2"/>`;
-  const fb = alg.fb;
-  lines += `<path d="M${px(fb) + 16} ${py(fb)} h12 v-24 h-28 v8" fill="none" stroke="${tok("--blue")}" stroke-width="1.5"/>`;
-  lines += `<line x1="30" y1="162" x2="410" y2="162" stroke="${tok("--line")}"/>`;
-  for (const c of alg.carriers) lines += `<line x1="${px(c)}" y1="${py(c) + 16}" x2="${px(c)}" y2="162" stroke="${tok("--orange")}" stroke-width="2"/>`;
-  let nodes = "";
-  for (let op = 1; op <= 6; op++) {
-    const carrier = roles[op - 1].carrier;
-    const color = v.ops[op - 1].level ? (carrier ? tok("--orange-text") : tok("--label")) : tok("--line");
-    nodes += `<circle cx="${px(op)}" cy="${py(op)}" r="16" fill="${tok("--black")}" stroke="${color}"/><text x="${px(op)}" y="${py(op) + 4}" text-anchor="middle" fill="${color}" font-family="DM Mono" font-size="11">${op}</text>`;
-  }
-  $("#algoSvg").innerHTML = lines + nodes;
+  const silent = new Set(v.ops.map((o, i) => (o.level ? 0 : i + 1)).filter(Boolean));
+  $("#algoSvg").innerHTML = algorithmSvg(v.algorithm, alg.edges, alg.carriers, {
+    width: 440,
+    height: 170,
+    silent,
+    colors: { box: tok("--text"), text: tok("--black"), line: tok("--text"), dim: tok("--line") },
+  });
 }
 
 const fmtTime = (s) => (s >= 20 ? "sustains" : s >= 1 ? `${s.toFixed(1)} s` : `${Math.round(s * 1000)} ms`);
