@@ -43,51 +43,43 @@ export const ALGORITHM_LAYOUT = {
   32: { p: { 1: [0, 0], 2: [1, 0], 3: [2, 0], 4: [3, 0], 5: [4, 0], 6: [5, 0] }, fb: [6, 6, "R"] },
 };
 
+// Drawing geometry for style D: wide boxes on a fixed grid, sized for the tallest (4-row) and
+// widest (6-column) algorithms so the diagram never rescales between patches.
+const BOX_W = 51, BOX_H = 34, GAP_X = 14, GAP_Y = 16, MAX_ROWS = 4;
+export const CHART_HEIGHT = 24 + MAX_ROWS * BOX_H + (MAX_ROWS - 1) * GAP_Y + 30;
+
 /**
- * SVG markup for one algorithm, sized to fill `width` x `height`.
- * edges: [[from, to], ...] modulation routing; carriers: [op, ...].
- * colors: { box, text, line, dim } ; silent: set of operators drawn dimmed (output level 0).
+ * SVG markup for one algorithm (viewBox 0 0 width CHART_HEIGHT).
+ * Panel positions and panel-style lines: straight verticals and diagonals, an output bus under
+ * the carriers, a right-angled feedback loop. Coloured by role in the app's palette.
+ * colors: { fill, carrier, modulator, line, bus, feedback, dim }; silent: operators at level 0.
  */
-export function algorithmSvg(algorithm, edges, carriers, { width = 440, height = 170, colors, silent = new Set(), label = true } = {}) {
+export function algorithmSvg(algorithm, edges, carriers, { width = 440, colors, silent = new Set() } = {}) {
   const lay = ALGORITHM_LAYOUT[algorithm];
   const cols = Math.max(...Object.values(lay.p).map(([c]) => c)) + 1;
-  const rows = Math.max(...Object.values(lay.p).map(([, r]) => r)) + 1;
-  // Panel proportions: boxes ~1.55:1, horizontal gap ~0.25 box, vertical gap ~0.4 box.
-  const bottom = label ? 34 : 14;
-  // One box size for every algorithm, as on the panel: sized for the widest (6 columns) and
-  // tallest (4 rows) layouts, so switching algorithms never rescales the operators.
-  const fit = (c, r) => Math.min((width - 40) / (c + (c - 1) * 0.25), ((height - bottom - 16) / (r + (r - 1) * 0.4)) * 1.55);
-  const unitW = fit(Math.max(cols, 6), Math.max(rows, 4));
-  const W = unitW, H = unitW / 1.55, GX = W * 0.25, GY = H * 0.4;
-  const totalW = cols * W + (cols - 1) * GX;
+  const totalW = cols * BOX_W + (cols - 1) * GAP_X;
   const x0 = (width - totalW) / 2;
-  const busY = height - bottom + 8;
-  const top = (op) => busY - 8 - lay.p[op][1] * (H + GY) - H;
-  const left = (op) => x0 + lay.p[op][0] * (W + GX);
-  const cx = (op) => left(op) + W / 2;
-  const stroke = Math.max(1.5, H / 9);
-  const line = (x1, y1, x2, y2) => `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${colors.line}" stroke-width="${stroke}" stroke-linecap="square"/>`;
+  const busY = CHART_HEIGHT - 22;
+  const left = (op) => x0 + lay.p[op][0] * (BOX_W + GAP_X);
+  const top = (op) => busY - 12 - lay.p[op][1] * (BOX_H + GAP_Y) - BOX_H;
+  const cx = (op) => left(op) + BOX_W / 2;
+  const f = (n) => n.toFixed(1);
+  const line = (x1, y1, x2, y2, c) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${c}" stroke-width="2"/>`;
   let out = "";
-  for (const [from, to] of edges) out += line(cx(from), top(from) + H, cx(to), top(to));
-  // Output bus: a stub under each carrier and one horizontal line spanning them.
+  for (const [from, to] of edges) out += line(cx(from), top(from) + BOX_H, cx(to), top(to), colors.line);
   const xs = carriers.map(cx);
-  for (const c of carriers) out += line(cx(c), top(c) + H, cx(c), busY);
-  if (xs.length > 1) out += line(Math.min(...xs), busY, Math.max(...xs), busY);
+  for (const c of carriers) out += line(cx(c), top(c) + BOX_H, cx(c), busY, colors.bus);
+  if (xs.length > 1) out += line(Math.min(...xs), busY, Math.max(...xs), busY, colors.bus);
   // Feedback: up from the top edge, over the side, down, and back into the target's side.
   const [fbFrom, fbTo, side] = lay.fb;
   const s = side === "R" ? 1 : -1;
-  const outer = side === "R" ? left(fbFrom) + W + W * 0.18 : left(fbFrom) - W * 0.18;
-  const rise = top(fbFrom) - H * 0.35;
-  const exitX = cx(fbFrom) + s * W * 0.25;
-  const entryY = top(fbTo) + H * 0.6;
-  const edgeX = side === "R" ? left(fbTo) + W : left(fbTo);
-  out += `<path d="M${exitX.toFixed(1)} ${top(fbFrom).toFixed(1)} V${rise.toFixed(1)} H${outer.toFixed(1)} V${entryY.toFixed(1)} H${edgeX.toFixed(1)}" fill="none" stroke="${colors.line}" stroke-width="${stroke}" stroke-linejoin="miter"/>`;
+  const outer = side === "R" ? left(fbFrom) + BOX_W + 8 : left(fbFrom) - 8;
+  const edgeX = side === "R" ? left(fbTo) + BOX_W : left(fbTo);
+  out += `<path d="M${f(cx(fbFrom) + s * BOX_W * 0.2)} ${f(top(fbFrom))} V${f(top(fbFrom) - 8)} H${f(outer)} V${f(top(fbTo) + BOX_H * 0.55)} H${f(edgeX)}" fill="none" stroke="${colors.feedback}" stroke-width="1.75"/>`;
   for (let op = 1; op <= 6; op++) {
-    const dim = silent.has(op);
-    out += `<rect x="${left(op).toFixed(1)}" y="${top(op).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" fill="${dim ? colors.dim : colors.box}"/>`;
-    out += `<text x="${cx(op).toFixed(1)}" y="${(top(op) + H * 0.7).toFixed(1)}" text-anchor="middle" fill="${colors.text}" font-family="DM Mono, monospace" font-size="${(H * 0.62).toFixed(1)}" font-weight="500">${op}</text>`;
+    const role = silent.has(op) ? colors.dim : carriers.includes(op) ? colors.carrier : colors.modulator;
+    out += `<rect x="${f(left(op))}" y="${f(top(op))}" width="${BOX_W}" height="${BOX_H}" rx="3" fill="${colors.fill}" stroke="${role}" stroke-width="1.75"/>`;
+    out += `<text x="${f(cx(op))}" y="${f(top(op) + BOX_H / 2 + 4.5)}" text-anchor="middle" fill="${role}" font-family="DM Mono, monospace" font-size="13">${op}</text>`;
   }
-  if (label)
-    out += `<text x="${(width / 2).toFixed(1)}" y="${(busY + 20).toFixed(1)}" text-anchor="middle" fill="${colors.line}" font-family="DM Mono, monospace" font-size="13">${algorithm}</text>`;
   return out;
 }

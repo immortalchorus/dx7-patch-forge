@@ -3,7 +3,7 @@ import { ssynthFile, parseSsynth } from "./ssynth.js";
 import { CONTROLS, GROUPS, neutralSliders } from "./controls.js";
 import { cartridgeVoices } from "./designer.js";
 import { MidiLink } from "./midi.js";
-import { algorithmSvg } from "./algorithm-chart.js";
+import { algorithmSvg, CHART_HEIGHT } from "./algorithm-chart.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -214,16 +214,17 @@ function drawOperators(v) {
 }
 
 function drawAlgorithm(v) {
-  // Drawn like the DX7 front-panel chart: cream boxes and lines, carriers on the output bus.
+  // DX7 panel positions and line types, in the app's palette (carriers orange, modulators slate).
   const css = getComputedStyle(document.documentElement);
   const tok = (name) => css.getPropertyValue(name).trim();
   const alg = ALGORITHMS[v.algorithm];
   const silent = new Set(v.ops.map((o, i) => (o.level ? 0 : i + 1)).filter(Boolean));
-  $("#algoSvg").innerHTML = algorithmSvg(v.algorithm, alg.edges, alg.carriers, {
+  const svg = $("#algoSvg");
+  svg.setAttribute("viewBox", `0 0 440 ${CHART_HEIGHT}`);
+  svg.innerHTML = algorithmSvg(v.algorithm, alg.edges, alg.carriers, {
     width: 440,
-    height: 170,
     silent,
-    colors: { box: tok("--text"), text: tok("--black"), line: tok("--text"), dim: tok("--line") },
+    colors: { fill: tok("--black"), carrier: tok("--orange-text"), modulator: tok("--label"), line: "#6a6a72", bus: tok("--orange-text"), feedback: tok("--blue"), dim: tok("--line") },
   });
 }
 

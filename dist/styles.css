@@ -116,11 +116,19 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 .key.black.down::before { background: var(--blue-pressed); }
 .hint { display: block; color: var(--muted); font: 10px var(--mono); margin-top: 8px; }
 
-.algorithm-card { display: grid; grid-template-columns: 110px 1fr; min-height: 170px; }
+.algorithm-card { display: grid; grid-template-columns: 150px 1fr; }
 .algo-meta { border-right: 1px solid var(--line); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; }
 .algo-meta span, .metrics span { font: 10px var(--mono); color: var(--label); letter-spacing: .1em; }
 .algo-meta strong { font: 400 54px var(--mono); color: var(--orange-text); }
-#algoSvg { width: 100%; height: 168px; }
+.algo-meta { gap: 14px; justify-content: flex-start; }
+.algo-key { list-style: none; margin: auto 0 0; padding: 0; display: grid; gap: 6px; font-size: 11px; color: var(--muted); }
+.algo-key li { display: flex; align-items: center; gap: 7px; line-height: 1.2; }
+.algo-key i { flex: none; width: 14px; height: 9px; border: 1.5px solid; border-radius: 2px; }
+.algo-key .k-car { border-color: var(--orange-text); }
+.algo-key .k-mod { border-color: var(--label); }
+.algo-key .k-fb { border: 0; border-top: 1.5px solid var(--blue); border-right: 1.5px solid var(--blue); border-radius: 0; height: 7px; }
+.algo-key .k-off { border-color: var(--line); }
+#algoSvg { width: 100%; height: auto; max-height: 300px; display: block; padding: 6px 0; }
 
 .metrics { display: grid; grid-template-columns: 1.5fr 1fr 1fr; margin-top: 10px; }
 .metrics div { padding: 14px 18px; border-right: 1px solid var(--line); }
@@ -211,9 +219,10 @@ footer { height: 54px; border-top: 1px solid var(--line); display: flex; align-i
   .controls { display: block; }
   .primary { width: 100%; margin-top: 22px; }
   .sliders { grid-template-columns: 1fr; }
-  .algorithm-card { grid-template-columns: 80px 1fr; }
-  .algo-meta { padding: 14px; }
-  .algo-meta strong { font-size: 40px; }
+  .algorithm-card { grid-template-columns: 1fr; }
+  .algo-meta { padding: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); }
+  .algo-meta strong { font-size: 36px; }
+  .algo-key { margin: 0; grid-template-columns: 1fr 1fr; flex: 1 1 100%; }
   .metrics { grid-template-columns: 1fr; }
   .metrics div { border-right: 0; border-bottom: 1px solid var(--line); }
   .download-row { flex-wrap: wrap; }
