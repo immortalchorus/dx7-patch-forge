@@ -159,6 +159,19 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 .alternate-downloads { display: flex; justify-content: flex-end; gap: 18px; flex-wrap: wrap; }
 .single-download { display: block; margin: 10px 0 0; border: 0; background: transparent; color: var(--label); font: 11px var(--ui); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
 .single-download:hover { color: var(--blue); }
+.midi-row { margin-top: 14px; padding: 12px 14px; background: var(--charcoal); border: 1px solid var(--line); border-radius: var(--radius); }
+.midi-head { display: flex; justify-content: space-between; gap: 12px; font: 10px var(--mono); letter-spacing: .1em; color: var(--label); }
+.midi-head small { font: 11px var(--ui); letter-spacing: 0; color: var(--muted); text-align: right; }
+.midi-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 10px; }
+.midi-controls button { border: 1px solid var(--line); background: var(--charcoal-2); color: var(--text); border-radius: var(--radius); padding: 8px 12px; font: 12px var(--ui); cursor: pointer; }
+.midi-controls button:hover:not(:disabled) { border-color: var(--blue); }
+.midi-controls .midi-send { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+.midi-controls .midi-send:active { background: var(--blue-pressed); }
+.midi-controls button:disabled { opacity: .5; cursor: default; }
+.midi-field { display: flex; align-items: center; gap: 6px; font: 12px var(--ui); color: var(--label); font-weight: 400; }
+.midi-field select { background: var(--charcoal-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; font: 12px var(--ui); max-width: 200px; }
+.midi-auto input { accent-color: var(--blue); }
+[hidden] { display: none !important; }
 .compat { text-align: right; color: var(--muted); font: 10px var(--mono); }
 
 footer { height: 54px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 10px var(--mono); letter-spacing: .1em; }

@@ -105,6 +105,16 @@
           <button id="download" class="single-download">DX7 32-voice cartridge (.syx): this voice + 31 variations</button>
           <button id="singleDownload" class="single-download">DX7 single voice (.syx, 163 bytes)</button>
         </div>
+        <div class="midi-row" id="midiRow">
+          <div class="midi-head"><span>SEND TO SYNTH</span><small id="midiStatus">Web MIDI · single voice to the edit buffer</small></div>
+          <div class="midi-controls">
+            <button id="midiConnect">Connect MIDI</button>
+            <label class="midi-field" hidden>Output <select id="midiOutput"></select></label>
+            <label class="midi-field" hidden>Channel <select id="midiChannel"></select></label>
+            <label class="midi-field midi-auto" hidden><input id="midiAuto" type="checkbox"> Send on every change</label>
+            <button id="midiSend" class="midi-send" hidden>Send voice</button>
+          </div>
+        </div>
         <p class="compat">SpaceAge 80s FM · Yamaha DX7 / DX7II / TX802 · Dexed</p>
       </aside>
     </section>

@@ -2,6 +2,7 @@ import { ALGORITHMS, operatorRoles, opRatio, opFixedHz, cleanName, singleVoiceSy
 import { ssynthFile } from "./ssynth.js";
 import { CONTROLS, GROUPS, neutralSliders } from "./controls.js";
 import { cartridgeVoices } from "./designer.js";
+import { MidiLink } from "./midi.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -159,6 +160,7 @@ function show() {
   if (!nameField.value || nameField.value === state.generatedName) nameField.value = r.name;
   state.generatedName = r.name;
   sendVoice();
+  if (midi.auto && midi.access) sendToSynth(true);
 
   const cues = intent.cues;
   $("#matchCount").textContent = `${cues.length} cue${cues.length === 1 ? "" : "s"} recognised`;
@@ -384,6 +386,54 @@ $("#download").onclick = () => {
   const voices = cartridgeVoices([{ voice: namedVoice() }, ...others]);
   download(cartridgeSysex(voices), stem() + "_cartridge.syx");
 };
+
+// ---------------------------------------------------------------- MIDI out
+const midi = new MidiLink(drawMidi);
+function drawMidi() {
+  const connected = !!midi.access;
+  $("#midiConnect").hidden = connected;
+  document.querySelectorAll(".midi-field, #midiSend").forEach((el) => (el.hidden = !connected));
+  if (!midi.supported) {
+    $("#midiConnect").disabled = true;
+    $("#midiStatus").textContent = "This browser has no Web MIDI (try Chrome or Edge)";
+    return;
+  }
+  if (!connected) return;
+  const outs = midi.outputs();
+  const chosen = midi.output();
+  $("#midiOutput").innerHTML = outs.length
+    ? outs.map((o) => `<option value="${esc(o.id)}" ${o === chosen ? "selected" : ""}>${esc(o.name)}</option>`).join("")
+    : "<option>No MIDI outputs found</option>";
+  $("#midiSend").disabled = !chosen;
+  $("#midiStatus").textContent = chosen ? `Ready: ${chosen.name}` : "Connect a synth or start Dexed, then it will appear here";
+}
+$("#midiChannel").innerHTML = Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${i === midi.channel ? "selected" : ""}>${i + 1}</option>`).join("");
+$("#midiAuto").checked = midi.auto;
+
+function sendToSynth(quiet = false) {
+  if (!current()) return;
+  try {
+    const name = midi.send(namedVoice());
+    $("#midiStatus").textContent = `Sent ${patchName().trim()} to ${name}`;
+  } catch (err) {
+    if (!quiet) $("#midiStatus").textContent = String(err.message || err);
+  }
+}
+$("#midiConnect").onclick = async () => {
+  try {
+    await midi.connect();
+  } catch (err) {
+    $("#midiStatus").textContent = err?.name === "SecurityError" || err?.name === "NotAllowedError" ? "MIDI access was not allowed" : String(err.message || err);
+  }
+};
+$("#midiOutput").onchange = (e) => (midi.set({ outputId: e.target.value }), drawMidi());
+$("#midiChannel").onchange = (e) => midi.set({ channel: +e.target.value });
+$("#midiAuto").onchange = (e) => {
+  midi.set({ auto: e.target.checked });
+  if (e.target.checked) sendToSynth();
+};
+$("#midiSend").onclick = () => sendToSynth();
+drawMidi();
 
 // ---------------------------------------------------------------- wiring
 $("#generate").onclick = () => forge(true);

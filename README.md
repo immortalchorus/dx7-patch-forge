@@ -8,6 +8,8 @@ Describe a sound in ordinary language, audition it on the built-in keyboard, and
 - A 163-byte Yamaha DX7 single-voice `.syx`
 - A 32-voice Yamaha DX7 cartridge `.syx`: the chosen voice plus 31 related candidates and variations
 
+In Chrome or Edge, **Send to synth** also sends the current voice over Web MIDI to a DX7, TX802, Dexed or any compatible synth, on a chosen output and channel, optionally on every change. It sends only the single-voice dump, which lands in the synth's edit buffer, so nothing stored on the synth is overwritten. On a DX7, set SYS INFO AVAIL so it accepts SysEx.
+
 Live application: https://dx7-patch-forge.shanesanders.chatgpt.site
 
 ## How it works
@@ -58,6 +60,7 @@ No audio or prompt data is uploaded. Design, preview and file packaging all happ
 - `dist/js/design-worker.js`: design off the main thread
 - `dist/js/preview-engine.js` and `dist/js/preview-worklet.js`: real-time preview, on the audio thread when the browser allows it and on the main thread otherwise
 - `dist/js/ssynth.js`: SpaceAge native patch writer
+- `dist/js/midi.js`: Web MIDI output
 - `dist/js/voices-core.js` and `dist/js/voices-emm.js`: voice library
 - `tests/`: Node test suite
 - `.openai/hosting.json`: ChatGPT Sites deployment configuration
