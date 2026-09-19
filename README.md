@@ -16,6 +16,8 @@ Describe a sound in ordinary language, audition it on the built-in keyboard, and
 
 **Cartridges.** Open a `.syx` (32-voice cartridge, raw bank, or single voices) or a SpaceAge `.ssynth`, pick any voice and edit it with the sliders, starting exactly as loaded. Store results into a separate 32-slot "My cartridge", which is kept in the browser and downloaded as its own `.syx`. The opened file is never modified.
 
+**MIDI in.** A controller plays whatever is on screen, with its own velocity and sustain pedal, so a patch can be played properly while it is being edited; an **All notes off** button clears anything left hanging. A voice sent from the instrument arrives as the starting voice, and a 32-voice dump lands in the opened-cartridge column with the current voice untouched - so you can edit on the hardware, transmit, and carry on here.
+
 In Chrome or Edge, **Send to synth** also sends the current voice over Web MIDI to a DX7, TX802, Dexed or any compatible synth, on a chosen output and channel, optionally on every change. It sends only the single-voice dump, which lands in the synth's edit buffer, so nothing stored on the synth is overwritten. On a DX7, set SYS INFO AVAIL so it accepts SysEx.
 
 Live application: https://immortalchorus.github.io/owl-operator-waveform-lab/

@@ -215,6 +215,11 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 [hidden] { display: none !important; }
 .compat { text-align: right; color: var(--muted); font: 10px var(--mono); }
 
+.midi-in { margin-top: 8px; }
+.midi-note { font: 9px var(--mono); color: var(--muted); }
+#midiPanic { border: 1px solid var(--line); background: var(--charcoal-2); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font: 11px var(--ui); cursor: pointer; }
+#midiPanic:hover { border-color: var(--warn); }
+
 /* Monitoring reverb */
 .verb { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .verb label { display: flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: .06em; color: var(--label); }

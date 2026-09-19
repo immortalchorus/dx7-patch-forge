@@ -191,13 +191,19 @@
         </div>
 
         <div class="midi-row" id="midiRow">
-          <div class="midi-head"><span>SEND TO SYNTH</span><small id="midiStatus">Web MIDI · single voice to the edit buffer</small></div>
+          <div class="midi-head"><span>MIDI</span><small id="midiStatus">Web MIDI · play OWL from a keyboard, send voices to a synth</small></div>
           <div class="midi-controls">
             <button id="midiConnect">Connect MIDI</button>
             <label class="midi-field" hidden>Output <select id="midiOutput"></select></label>
             <label class="midi-field" hidden>Channel <select id="midiChannel"></select></label>
             <label class="midi-field midi-auto" hidden><input id="midiAuto" type="checkbox"> Send on every change</label>
             <button id="midiSend" class="midi-send" hidden>Send voice</button>
+          </div>
+          <div class="midi-controls midi-in">
+            <label class="midi-field" hidden>Play from <select id="midiInput"></select></label>
+            <label class="midi-field midi-auto" hidden><input id="midiListen" type="checkbox"> Listen</label>
+            <button id="midiPanic" class="midi-field" hidden title="Silence anything left hanging">All notes off</button>
+            <small class="midi-note midi-field" hidden>A voice or cartridge sent from the instrument is read straight in.</small>
           </div>
         </div>
         <p class="compat">Compatible with SpaceAge 80s FM · Yamaha DX7 / DX7II / TX802 · Dexed</p>

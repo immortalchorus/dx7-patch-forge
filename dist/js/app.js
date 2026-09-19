@@ -421,11 +421,11 @@ function sendVoice() {
   const voice = state.manual ? classic.previewVoice : current()?.voice;
   if (audio && voice) audio.send({ type: "voice", voice });
 }
-async function noteOn(note) {
+async function noteOn(note, velocity) {
   try {
     const a = await ensureAudio();
     if (a.ctx.state !== "running") await a.ctx.resume();
-    a.send({ type: "on", note, velocity: +$("#velocity").value });
+    a.send({ type: "on", note, velocity: velocity ?? +$("#velocity").value });
     document.querySelector(`[data-note="${note}"]`)?.classList.add("down");
   } catch (err) {
     $("#statusText").textContent = String(err.message || err).toUpperCase();
@@ -950,8 +950,31 @@ $("#clearWorking").onclick = () => {
 };
 drawCarts();
 
-// ---------------------------------------------------------------- MIDI out
-const midi = new MidiLink(drawMidi);
+// ---------------------------------------------------------------- MIDI in and out
+// Playing in: notes and velocity go straight to the preview, so a controller plays whatever
+// is on screen while it is being edited. A dump sent from the instrument is read straight in.
+const midi = new MidiLink(drawMidi, {
+  note: async ({ note, velocity, on }) => {
+    if (!on) return noteOff(note);
+    await noteOn(note, velocity);
+  },
+  panic: () => {
+    audio?.send({ type: "panic" });
+    document.querySelectorAll(".key.down").forEach((k) => k.classList.remove("down"));
+  },
+  voices: ({ voices, source }) => {
+    if (voices.length === 1) {
+      editVoice(voices[0], "a voice from " + source);
+      $("#midiStatus").textContent = `Received ${voices[0].name.trim() || "a voice"} from ${source}`;
+      return;
+    }
+    // A whole cartridge goes into the opened column, where any voice can be picked to edit.
+    cart.opened = { fileName: `${source} dump`, voices };
+    drawCarts();
+    $("#cartStatus").textContent = `Received ${voices.length} voices from ${source}. Pick one to edit it.`;
+    $("#midiStatus").textContent = `Received ${voices.length} voices from ${source}`;
+  },
+});
 function drawMidi() {
   const connected = !!midi.access;
   $("#midiConnect").hidden = connected;
@@ -968,7 +991,17 @@ function drawMidi() {
     ? outs.map((o) => `<option value="${esc(o.id)}" ${o === chosen ? "selected" : ""}>${esc(o.name)}</option>`).join("")
     : "<option>No MIDI outputs found</option>";
   $("#midiSend").disabled = !chosen;
-  $("#midiStatus").textContent = chosen ? `Ready: ${chosen.name}` : "Connect a synth or start Dexed, then it will appear here";
+  const ins = midi.inputs();
+  $("#midiInput").innerHTML =
+    `<option value="all" ${midi.inputId === "all" ? "selected" : ""}>Any input</option>` +
+    ins.map((i) => `<option value="${esc(i.id)}" ${i.id === midi.inputId ? "selected" : ""}>${esc(i.name)}</option>`).join("");
+  $("#midiListen").checked = midi.listen;
+  const playing = midi.listening().length;
+  $("#midiStatus").textContent = chosen
+    ? `Ready: ${chosen.name}` + (playing ? ` · playing from ${playing} input${playing === 1 ? "" : "s"}` : "")
+    : ins.length
+    ? `Playing from ${playing || "no"} input${playing === 1 ? "" : "s"} · no output chosen`
+    : "Connect a synth or start Dexed, then it will appear here";
 }
 $("#midiChannel").innerHTML = Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${i === midi.channel ? "selected" : ""}>${i + 1}</option>`).join("");
 $("#midiAuto").checked = midi.auto;
@@ -996,6 +1029,13 @@ $("#midiAuto").onchange = (e) => {
   if (e.target.checked) sendToSynth();
 };
 $("#midiSend").onclick = () => sendToSynth();
+$("#midiInput").onchange = (e) => (midi.set({ inputId: e.target.value }), drawMidi());
+$("#midiListen").onchange = (e) => (midi.set({ listen: e.target.checked }), drawMidi());
+$("#midiPanic").onclick = () => {
+  midi.releaseAll();
+  setLoopPlaying(false);
+  $("#midiStatus").textContent = "All notes off";
+};
 drawMidi();
 
 // ---------------------------------------------------------------- wiring
