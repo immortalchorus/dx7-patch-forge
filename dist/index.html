@@ -87,6 +87,14 @@
           <div id="keyboard" class="keyboard" aria-label="Preview keyboard"></div>
           <small class="hint">Click or use A W S E D F T G Y H U J K. Preview is an approximation of the DX7; your synth has the final say.</small>
 
+          <div class="verb" id="verb">
+            <label class="verb-on"><input type="checkbox" id="verbOn"> Reverb</label>
+            <label>Space <select id="verbPreset"></select></label>
+            <label>Mix <input id="verbMix" type="range" min="0" max="60" step="1"><output id="verbMixOut"></output></label>
+            <label>Size <input id="verbSize" type="range" min="25" max="500" step="5"><output id="verbSizeOut"></output></label>
+            <small class="verb-note" title="The reverb is only in your monitoring: it is not written into any file, is not sent over MIDI, and the level meter still reads the dry signal.">monitoring only</small>
+          </div>
+
           <div class="loop" id="loop">
             <div class="loop-head">
               <button id="loopPlay" class="loop-play" aria-pressed="false">Play loop</button>

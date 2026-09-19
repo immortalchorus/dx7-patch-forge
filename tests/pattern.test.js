@@ -100,3 +100,14 @@ test("the playhead and peak level are reported back while the loop runs", () => 
   assert.ok(seen.some((e) => e.peak > 0.01), "and a level to show on the meter");
   assert.deepEqual([...new Set(steps)].slice(0, 4), [0, 1, 2, 3]);
 });
+
+test("the octave control moves the whole pattern, or refuses to", async () => {
+  const { shiftPattern } = await import("../dist/js/pattern.js");
+  const p = sanitizePattern(defaultPattern());
+  const up = shiftPattern(p, 12);
+  assert.deepEqual(up.steps.map((s) => s.note), p.steps.map((s) => s.note + 12));
+  assert.deepEqual(up.steps.map((s) => s.vel), p.steps.map((s) => s.vel), "velocities are untouched");
+  assert.equal(shiftPattern(p, 96), null, "a shift that would run off the keyboard is refused");
+  const withRest = sanitizePattern({ ...p, steps: p.steps.map((s, i) => (i ? s : { ...s, note: null })) });
+  assert.equal(shiftPattern(withRest, 12).steps[0].note, null, "rests stay rests");
+});

@@ -6,7 +6,8 @@ import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
-import { defaultPattern, sanitizePattern, PRESETS, DIVISIONS, CHORDS, presetById } from "./pattern.js";
+import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, CHORDS, presetById } from "./pattern.js";
+import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
 import { noteName } from "./dx7-params.js";
 
 const $ = (s) => document.querySelector(s);
@@ -379,7 +380,8 @@ function updateFileName() {
 
 // ---------------------------------------------------------------- audition
 let audio = null;
-let octave = 4;
+// The keyboard and the loop share one octave, remembered between visits.
+let octave = Math.min(7, Math.max(1, +localStorage.getItem("owl.octave") || 4));
 const KEYS = "awsedftgyhujk";
 let audioSetup = null;
 /**
@@ -395,7 +397,7 @@ function ensureAudio() {
       await ctx.audioWorklet.addModule(new URL("./preview-worklet.js", import.meta.url));
       const node = new AudioWorkletNode(ctx, "fm-preview", { outputChannelCount: [2] });
       node.port.onmessage = ({ data }) => engineEvent(data);
-      node.connect(ctx.destination);
+      connectOutput(ctx, node);
       audio = { ctx, send: (m) => node.port.postMessage(m), mode: "worklet" };
     } catch (err) {
       console.warn("Audio worklet failed to load; using the main-thread preview instead.", err);
@@ -403,7 +405,7 @@ function ensureAudio() {
       const engine = new PreviewEngine(ctx.sampleRate, engineEvent);
       const node = ctx.createScriptProcessor(1024, 0, 2);
       node.onaudioprocess = (e) => engine.render([e.outputBuffer.getChannelData(0), e.outputBuffer.getChannelData(1)]);
-      node.connect(ctx.destination);
+      connectOutput(ctx, node);
       audio = { ctx, send: (m) => engine.message(m), mode: "main-thread", node };
     }
     sendVoice();
@@ -471,8 +473,112 @@ addEventListener("keyup", (e) => {
   const n = octave * 12 + i;
   if (down.delete(n)) noteOff(n);
 });
-$("#octDown").onclick = () => ((octave = Math.max(1, octave - 1)), buildKeyboard());
-$("#octUp").onclick = () => ((octave = Math.min(7, octave + 1)), buildKeyboard());
+/** The octave buttons move the keyboard and the loop together, so what you play and what
+ * the loop plays stay in the same register. A shift that would push a note off the keyboard
+ * is refused rather than squashing the pattern. */
+function shiftOctave(delta) {
+  const next = Math.min(7, Math.max(1, octave + delta));
+  if (next === octave) return;
+  const moved = shiftPattern(loop.pattern, delta * 12);
+  if (!moved) {
+    $("#loopHint").textContent = "The pattern cannot move any further without running off the keyboard.";
+    return;
+  }
+  octave = next;
+  try {
+    localStorage.setItem("owl.octave", String(octave));
+  } catch {
+    // Storage blocked; the octave just will not be remembered.
+  }
+  loop.pattern = sanitizePattern(moved);
+  buildKeyboard();
+  pushPattern();
+  drawRoll();
+}
+$("#octDown").onclick = () => shiftOctave(-1);
+$("#octUp").onclick = () => shiftOctave(1);
+
+// ---------------------------------------------------------------- monitoring reverb
+// Listening equipment only: it sits after the engine, so nothing it does reaches a patch
+// file, a MIDI dump or the measurements, and the clip meter still reads the dry signal.
+const VERB_KEY = "owl.reverb";
+const verb = { settings: loadReverb(), nodes: null };
+
+function loadReverb() {
+  try {
+    return sanitizeReverb(JSON.parse(localStorage.getItem(VERB_KEY)) || undefined);
+  } catch {
+    return defaultReverb();
+  }
+}
+function saveReverb() {
+  try {
+    localStorage.setItem(VERB_KEY, JSON.stringify(verb.settings));
+  } catch {
+    // Storage blocked; the setting still applies for this session.
+  }
+}
+
+/** Engine → dry, and engine → pre-delay → convolver → wet. */
+function connectOutput(ctx, source) {
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const predelay = ctx.createDelay(0.2);
+  const convolver = ctx.createConvolver();
+  convolver.normalize = false;
+  source.connect(dry).connect(ctx.destination);
+  source.connect(predelay).connect(convolver).connect(wet).connect(ctx.destination);
+  verb.nodes = { ctx, dry, wet, predelay, convolver };
+  applyReverb();
+}
+
+/** Rebuild the impulse for the current size and preset, and set the mix. */
+function applyReverb({ rebuild = true } = {}) {
+  const s = verb.settings;
+  const n = verb.nodes;
+  if (!n) return;
+  const preset = verbPreset(s.preset);
+  if (rebuild) {
+    const [l, r] = impulseResponse(n.ctx.sampleRate, { seconds: s.seconds, damping: preset.damping });
+    const buffer = n.ctx.createBuffer(2, l.length, n.ctx.sampleRate);
+    buffer.copyToChannel(l, 0);
+    buffer.copyToChannel(r, 1);
+    n.convolver.buffer = buffer;
+  }
+  n.predelay.delayTime.value = preset.predelay;
+  const mix = s.on ? s.mix : 0;
+  // Equal-power-ish: the dry path only dips a little, so switching the reverb on is not a jump in level.
+  n.wet.gain.value = mix;
+  n.dry.gain.value = 1 - 0.3 * mix;
+}
+
+function drawReverb() {
+  const s = verb.settings;
+  $("#verbOn").checked = s.on;
+  $("#verbPreset").innerHTML = REVERB_PRESETS.map((p) => `<option value="${p.id}" ${p.id === s.preset ? "selected" : ""}>${esc(p.label)}</option>`).join("");
+  $("#verbMix").value = Math.round(s.mix * 100);
+  $("#verbMixOut").value = `${Math.round(s.mix * 100)}%`;
+  $("#verbSize").value = Math.round(s.seconds * 100);
+  $("#verbSizeOut").value = `${s.seconds.toFixed(1)} s`;
+  $("#verb").classList.toggle("off", !s.on);
+}
+
+function setReverb(change, rebuild) {
+  change(verb.settings);
+  verb.settings = sanitizeReverb(verb.settings);
+  saveReverb();
+  applyReverb({ rebuild });
+  drawReverb();
+}
+$("#verbOn").onchange = (e) => setReverb((s) => (s.on = e.target.checked), false);
+$("#verbPreset").onchange = (e) =>
+  setReverb((s) => {
+    s.preset = e.target.value;
+    s.seconds = verbPreset(s.preset).seconds; // a space is a size as well as a tone
+    if (!s.on) s.on = true;
+  }, true);
+$("#verbMix").oninput = (e) => setReverb((s) => ((s.mix = +e.target.value / 100), (s.on = s.on || s.mix > 0)), false);
+$("#verbSize").oninput = (e) => setReverb((s) => (s.seconds = +e.target.value / 100), true);
 
 // ---------------------------------------------------------------- audition loop
 // A short pattern that keeps playing while the voice is edited, so a change can be heard as
@@ -533,8 +639,10 @@ function drawRoll() {
   // Keep the written notes in view: follow them, in whole octaves.
   if (notes.length) {
     const lo = Math.min(...notes), hi = Math.max(...notes);
-    // Leave a little room under the lowest note rather than parking it on the bottom edge.
-    if (lo < loop.base || hi > loop.base + ROWS - 1) loop.base = Math.max(0, Math.min(103, Math.floor(Math.max(0, lo - 4) / 12) * 12));
+    // Keep the notes off the very edge of the window, unless they span more than it can show.
+    const crowded = lo <= loop.base || hi >= loop.base + ROWS - 1;
+    if (crowded && hi - lo <= ROWS - 3) loop.base = Math.max(0, Math.min(103, Math.floor(Math.max(0, lo - 4) / 12) * 12));
+    else if (lo < loop.base || hi > loop.base + ROWS - 1) loop.base = Math.max(0, Math.min(103, Math.floor(Math.max(0, lo) / 12) * 12));
   }
   // A label column so the roll can be read at a glance: octave Cs, named as the DX7 names them.
   const labels = Array.from({ length: ROWS }, (_, r) => {
@@ -617,7 +725,9 @@ $("#tieLane").addEventListener("click", (e) => {
 $("#loopPreset").onchange = (e) => {
   const preset = presetById(e.target.value);
   if (!preset) return;
-  loop.pattern = sanitizePattern(preset.make());
+  // Presets are written around middle C; bring them to whatever octave is on screen.
+  const written = preset.make();
+  loop.pattern = sanitizePattern(shiftPattern(written, (octave - 4) * 12) || written);
   $("#loopHint").textContent = preset.hint;
   pushPattern();
   drawLoopControls();
@@ -864,6 +974,7 @@ $("#prompt").addEventListener("keydown", (e) => {
 document.querySelectorAll("[data-prompt]").forEach((b) => (b.onclick = () => (($("#prompt").value = b.dataset.prompt), forge())));
 buildKeyboard();
 buildTabs();
+drawReverb();
 drawLoopControls();
 drawRoll();
 forge();

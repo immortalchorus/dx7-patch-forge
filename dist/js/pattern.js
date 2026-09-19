@@ -140,3 +140,13 @@ export function stepEvents(pattern, index) {
   const intervals = chordById(pattern.chord).intervals;
   return { notes: intervals.map((iv) => Math.min(127, s.note + iv)), velocity: s.vel, steps: length };
 }
+
+/**
+ * The same pattern moved by whole semitones, or null if that would push a note off the
+ * keyboard. Refusing is better than clamping: a clamped sweep silently collapses into unison.
+ */
+export function shiftPattern(pattern, semitones) {
+  const notes = pattern.steps.filter((s) => s.note != null);
+  if (notes.some((s) => s.note + semitones < 0 || s.note + semitones > 127)) return null;
+  return { ...pattern, steps: pattern.steps.map((s) => (s.note == null ? { ...s } : { ...s, note: s.note + semitones })) };
+}

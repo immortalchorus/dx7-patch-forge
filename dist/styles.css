@@ -215,6 +215,17 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 [hidden] { display: none !important; }
 .compat { text-align: right; color: var(--muted); font: 10px var(--mono); }
 
+/* Monitoring reverb */
+.verb { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.verb label { display: flex; align-items: center; gap: 6px; font: 10px var(--mono); letter-spacing: .06em; color: var(--label); }
+.verb.off label:not(.verb-on) { opacity: .45; }
+.verb-on { color: var(--text) !important; }
+.verb-on input { accent-color: var(--blue); }
+.verb select { background: var(--charcoal-2); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: 11px var(--mono); padding: 3px 4px; }
+.verb input[type="range"] { width: 70px; accent-color: var(--blue); }
+.verb output { font: 10px var(--mono); color: var(--muted); min-width: 32px; }
+.verb-note { font: 9px var(--mono); color: var(--muted); letter-spacing: .06em; margin-left: auto; border-bottom: 1px dotted var(--line); cursor: help; }
+
 /* Audition loop */
 .loop { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
 .loop-head { display: flex; align-items: center; gap: 10px; }
