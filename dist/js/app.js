@@ -39,7 +39,7 @@ worker.onmessage = ({ data }) => {
     state.response = { intent: { cues: [], dims: {}, families: {} }, results: [data.result], loadedFrom: state.loading };
     state.selected = 0;
     state.edits = {};
-    $("#patchName").value = data.result.name;
+    setNames(data.result.name);
   } else {
     const edit = state.edits[state.selected];
     if (edit) edit.result = data.result;
@@ -198,16 +198,46 @@ $("#resetZero").onclick = () => {
 };
 
 // ---------------------------------------------------------------- rendering the result
+/** The ten-character name a DX7 voice can hold: what goes into .syx, a slot and a MIDI dump. */
 function patchName() {
-  return cleanName($("#patchName").value.trim() || current()?.name || "FORGE");
+  return cleanName($("#patchName").value.trim() || shortenTitle(patchTitle()) || current()?.name || "FORGE");
+}
+
+/** What the patch is called: the file name, and the name stored inside a SpaceAge patch. */
+function patchTitle() {
+  return $("#patchTitle").value.trim() || current()?.name || "Untitled";
+}
+
+/**
+ * The ten-character DX7 name a title reduces to. SpaceAge makes a DX7 name by taking the
+ * first ten characters of the patch name, so OWL does exactly the same: export the same
+ * patch as .syx here and as .ssynth into SpaceAge, and both instruments show the same name.
+ * Type into the DX7 name box to override it.
+ */
+function shortenTitle(title) {
+  return cleanName(String(title).toUpperCase()).trim();
+}
+
+/** Keep the DX7 name following the title, until someone types their own. */
+function syncNames(title) {
+  const field = $("#patchName");
+  if (field.dataset.edited === "1") return;
+  field.value = shortenTitle(title);
+}
+
+/** Set both names at once, from a generated, loaded or hand-edited patch. */
+function setNames(name) {
+  $("#patchTitle").value = name;
+  $("#patchName").dataset.edited = "";
+  syncNames(name);
 }
 
 function show() {
   if (state.manual) return showManual();
   const r = current();
   const { intent, results } = state.response;
-  const nameField = $("#patchName");
-  if (!nameField.value || nameField.value === state.generatedName) nameField.value = r.name;
+  const titleField = $("#patchTitle");
+  if (!titleField.value || titleField.value === state.generatedName) setNames(r.name);
   state.generatedName = r.name;
   sendVoice();
   if (midi.auto && midi.access) sendToSynth(true);
@@ -405,7 +435,7 @@ $("#alternates").onclick = (e) => {
 };
 
 function updateFileName() {
-  $("#fileName").textContent = patchName().trim().replace(/\s+/g, "_") + ".ssynth";
+  $("#fileName").textContent = stem() + ".ssynth";
 }
 
 // ---------------------------------------------------------------- audition
@@ -846,11 +876,13 @@ function download(bytes, name, type = "application/octet-stream") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const namedVoice = () => ({ ...current().voice, name: patchName() });
-const stem = () => patchName().trim().replace(/\s+/g, "_") || "FORGE";
+// The file is named after the title, so what you called it and what is inside it agree.
+const stem = () => patchTitle().trim().replace(/[^\w .-]+/g, "").replace(/ +/g, "_") || "FORGE";
 
 $("#nativeDownload").onclick = async () => {
   if (!current()) return;
-  download(await ssynthFile(namedVoice(), $("#patchName").value.trim() || current().name), stem() + ".ssynth", "application/json");
+  // The title travels inside the patch, so renaming the file cannot leave the two disagreeing.
+  download(await ssynthFile(namedVoice(), patchTitle()), stem() + ".ssynth", "application/json");
 };
 $("#singleDownload").onclick = () => current() && download(singleVoiceSysex(namedVoice()), stem() + ".syx");
 $("#download").onclick = () => {
@@ -911,7 +943,7 @@ function editVoice(voice, label) {
   if (state.view === "classic") {
     // The classic editor takes the voice as it is; there is nothing to measure or search.
     ensureClassic().setVoice(sanitizeVoice(voice));
-    $("#patchName").value = classic.voice.name;
+    setNames(classic.voice.name);
     state.manual = manualResult(classic.voice);
     showManual();
     $("#cartStatus").textContent = `Editing ${label} by hand. The file itself is never changed.`;
@@ -1071,7 +1103,14 @@ drawMidi();
 $("#generate").onclick = () => forge(true);
 $("#seed").oninput = (e) => ($("#seedOut").value = e.target.value);
 $("#seed").onchange = () => forge();
-$("#patchName").oninput = updateFileName;
+$("#patchTitle").oninput = () => {
+  syncNames($("#patchTitle").value);
+  updateFileName();
+};
+$("#patchName").oninput = (e) => {
+  // Once the DX7 name is typed into, it stops following the title.
+  e.target.dataset.edited = e.target.value.trim() ? "1" : "";
+};
 $("#prompt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) forge(true);
 });

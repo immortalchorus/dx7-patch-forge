@@ -96,7 +96,10 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 /* Result column */
 .result-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
 .result-head .eyebrow { margin-bottom: 10px; }
-.result-head input { font: 500 28px var(--mono); letter-spacing: .08em; background: transparent; color: var(--text); border: 0; border-bottom: 1px solid transparent; width: 230px; text-transform: uppercase; outline: none; }
+.result-head #patchTitle { font: 500 28px var(--mono); letter-spacing: .04em; background: transparent; color: var(--text); border: 0; border-bottom: 1px solid transparent; width: 300px; outline: none; }
+.dx7-name { display: flex; align-items: center; gap: 7px; margin-top: 7px; font: 9px var(--mono); letter-spacing: .1em; color: var(--muted); cursor: help; }
+.dx7-name input { font: 11px var(--mono); letter-spacing: .1em; background: var(--charcoal-2); border: 1px solid var(--line); border-radius: 4px; color: var(--label); padding: 2px 5px; width: 104px; text-transform: uppercase; outline: none; }
+.dx7-name input:focus { border-color: var(--blue); color: var(--text); }
 .result-head input:focus { border-color: var(--blue); }
 .valid { font: 10px var(--mono); letter-spacing: .1em; color: var(--orange-text); border: 1px solid var(--orange); border-radius: 4px; padding: 8px; max-width: 230px; text-align: right; }
 

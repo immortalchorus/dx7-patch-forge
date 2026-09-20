@@ -72,7 +72,12 @@
 
       <aside class="result" aria-live="polite">
         <div class="result-head">
-          <div><p class="eyebrow">02 / GENERATED VOICE</p><input id="patchName" value="" maxlength="10" aria-label="Patch name" spellcheck="false"></div>
+          <div class="naming">
+            <p class="eyebrow">02 / GENERATED VOICE</p>
+            <input id="patchTitle" value="" maxlength="64" aria-label="Patch title" spellcheck="false" placeholder="Untitled">
+            <label class="dx7-name" title="A DX7 voice name is ten characters. This is what goes into a .syx file, a cartridge slot and a MIDI dump; the title above is what a SpaceAge patch and the file are called.">DX7 NAME
+              <input id="patchName" value="" maxlength="10" aria-label="DX7 voice name, ten characters" spellcheck="false"></label>
+          </div>
           <div class="valid" id="sourceBadge">—</div>
         </div>
 
