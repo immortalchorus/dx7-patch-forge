@@ -134,6 +134,9 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 #algoSvg { width: 100%; height: auto; max-height: 300px; display: block; padding: 6px 0; }
 
 .algo-chart { margin-top: 10px; }
+.algo-chart-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.algo-chart-head small { flex: 1; min-width: 200px; font: 10px var(--mono); color: var(--muted); line-height: 1.4; }
+.algo-chart:not(.open) .algo-chart-head small { display: none; }
 #algoToggle { border: 1px solid var(--line); background: var(--charcoal); color: var(--text); border-radius: var(--radius); padding: 7px 12px; font: 12px var(--ui); cursor: pointer; }
 #algoToggle:hover { border-color: var(--blue); }
 .algo-grid { display: none; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 10px; background: var(--charcoal); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
