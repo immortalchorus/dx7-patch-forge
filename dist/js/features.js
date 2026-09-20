@@ -97,6 +97,27 @@ function fallTime(env, from, end, drop, frameSec) {
  * carrier/modulator pair builds a harmonic series on half the note, so this is the largest
  * sub-multiple of the lowest carrier that every active ratio-mode operator sits on.
  */
+/** Harmonics 1..HARMONICS, as a share of their own total. Loudness-independent by design. */
+export const HARMONICS = 12;
+function harmonicProfile(spectrum, binHz, fRef) {
+  const out = new Float64Array(HARMONICS);
+  let sum = 0;
+  for (let k = 1; k <= HARMONICS; k++) {
+    const hz = k * fRef;
+    const centre = hz / binHz;
+    if (centre >= spectrum.length - 1) break;
+    // The loudest bin within a semitone, so a slightly stretched partial is still counted.
+    const span = Math.max(1, Math.round((hz * 0.03) / binHz));
+    let peak = 0;
+    for (let i = Math.max(1, Math.round(centre - span)); i <= Math.min(spectrum.length - 1, Math.round(centre + span)); i++)
+      peak = Math.max(peak, spectrum[i]);
+    out[k - 1] = peak;
+    sum += peak;
+  }
+  if (sum > 0) for (let k = 0; k < HARMONICS; k++) out[k] /= sum;
+  return [...out];
+}
+
 export function referenceRatio(voice) {
   const roles = operatorRoles(voice.algorithm);
   const active = voice.ops.filter((o) => o.mode === 0 && o.level > 40);
@@ -150,12 +171,23 @@ export function peakLevel(voice, notes = [36, 48, 60, 72, 84]) {
  *  vibrato   peak LFO pitch depth in cents (from parameters)
  *  tremolo   peak LFO amplitude depth in dB (from parameters)
  */
-export function measure(voice, opts = {}) {
-  const o = { ...ANALYSIS, ...opts };
-  const { samples, sampleRate, releaseAt, f0 } = renderNote(voice, o);
+/**
+ * Everything measurable about a piece of audio, whatever produced it: a rendered voice or a
+ * recording someone dropped in. Keeping this separate from the renderer is the whole point -
+ * a sample and a candidate patch have to be held against the same ruler, or comparing them
+ * means nothing.
+ *
+ *   samples     mono audio
+ *   releaseAt   sample index where the key was let go (samples.length for audio with no
+ *               known release: everything then counts as the held part)
+ *   f0          fundamental of the note in Hz
+ *   fRef        the harmonic reference: f0 for a recording, or f0 x referenceRatio for a
+ *               voice whose carriers build a series on a sub-multiple of the played note
+ */
+export function analyseSamples({ samples, sampleRate, releaseAt = samples.length, f0, fRef = f0, earlyAt = 0.02 }) {
   const frameSec = FRAME / sampleRate;
   const raw = envelopeDb(samples);
-  const releaseFrame = Math.floor(releaseAt / FRAME);
+  const releaseFrame = Math.max(1, Math.min(raw.length, Math.floor(releaseAt / FRAME)));
   // Smooth only within each phase so the key-up drop does not smear backwards.
   const radius = Math.round(0.12 / frameSec);
   const env = [...smoothMax(raw.slice(0, releaseFrame), radius), ...smoothMax(raw.slice(releaseFrame), radius)];
@@ -170,14 +202,13 @@ export function measure(voice, opts = {}) {
 
   // Spectrum of the note body: a few frames starting just after the attack, so an attack
   // transient (measured separately as `early`) does not count as overall brightness.
-  const fRef = f0 * referenceRatio(voice);
   const binHz = sampleRate / FFT_SIZE;
   const body = new Float64Array(FFT_SIZE / 2);
   const startSample = Math.max(0, Math.min(releaseAt - FFT_SIZE, Math.round((attack + BITE_WINDOW) * sampleRate)));
   const hop = FFT_SIZE / 2;
   let frames = 0;
-  for (let s = startSample; s + FFT_SIZE <= releaseAt && frames < 4; s += hop, frames++) {
-    const m = magnitudeSpectrum(samples, s);
+  for (let t = startSample; t + FFT_SIZE <= releaseAt && frames < 4; t += hop, frames++) {
+    const m = magnitudeSpectrum(samples, t);
     for (let i = 0; i < m.length; i++) body[i] += m[i];
   }
   if (!frames) {
@@ -197,13 +228,14 @@ export function measure(voice, opts = {}) {
     if (hz > 16 * f0) high += p;
   }
   const centroid = total > 0 ? weighted / total / fRef : 1;
+  // The shape of the harmonic series itself. Brightness is one number and says nothing about
+  // which partials carry the energy: a bell and a bass can share a centroid and sound nothing
+  // alike. This is the cheapest thing that tells them apart.
+  const harmonics = harmonicProfile(body, binHz, fRef);
   // A fixed time (default just after note-on, or the end of a known slow attack), so the
   // window does not wander as edits change the measured attack.
-  const early = centroidOver(samples, Math.round((o.earlyAt ?? 0.02) * sampleRate), releaseAt, 1, sampleRate, fRef);
+  const early = centroidOver(samples, Math.round(earlyAt * sampleRate), releaseAt, 1, sampleRate, fRef);
   const late = centroidOver(samples, releaseAt - Math.round(0.4 * sampleRate), releaseAt, 2, sampleRate, fRef);
-  const l = voice.lfo;
-  const PMS = [0, 10, 20, 33, 55, 92, 153, 255];
-  const maxAms = Math.max(...voice.ops.map((op, i) => (operatorRoles(voice.algorithm)[i].carrier ? op.ams : 0)));
   return {
     centroid,
     early,
@@ -214,9 +246,31 @@ export function measure(voice, opts = {}) {
     release,
     inharm: energy > 0 ? 1 - harmonicEnergy / energy : 0,
     grit: energy > 0 ? high / energy : 0,
+    harmonics,
+    peakDb: peak,
+  };
+}
+
+/** The same measurements for a voice: render it, then hold it against that ruler. */
+export function measure(voice, opts = {}) {
+  const o = { ...ANALYSIS, ...opts };
+  const rendered = renderNote(voice, o);
+  const l = voice.lfo;
+  const PMS = [0, 10, 20, 33, 55, 92, 153, 255];
+  const maxAms = Math.max(...voice.ops.map((op, i) => (operatorRoles(voice.algorithm)[i].carrier ? op.ams : 0)));
+  return {
+    ...analyseSamples({
+      samples: rendered.samples,
+      sampleRate: rendered.sampleRate,
+      releaseAt: rendered.releaseAt,
+      f0: rendered.f0,
+      fRef: rendered.f0 * referenceRatio(voice),
+      earlyAt: o.earlyAt,
+    }),
+    // Movement is read from the parameters rather than the audio: the LFO is one shared
+    // oscillator, and its depth is far easier to state than to recover from a spectrum.
     vibrato: 1200 * (l.pmd / 99) * (PMS[l.pms] / 255),
     tremolo: (l.amd / 99) * [0, 0.259, 0.427, 1][maxAms] * 24,
     lfoHz: LFO_HZ[l.speed],
-    peakDb: peak,
   };
 }

@@ -144,10 +144,12 @@ const pct = (x) => `${x > 0 ? "+" : ""}${Math.round(x * 100)}`;
  * Build a voice from a library entry and a full slider set. Deterministic: the same sliders
  * always give the same voice.
  */
-export function tailor(entry, sliders) {
+export function tailor(entry, sliders, { targets: override } = {}) {
   const s = { ...neutralSliders(), ...sliders };
   const base = baseFeatures(entry);
-  const targets = targetsFor(base, s);
+  // Matching a recording supplies its own targets, measured from the audio rather than
+  // derived from slider positions. Everything below then works the same way.
+  const targets = override ? { ...targetsFor(base, s), ...override } : targetsFor(base, s);
   let v = cloneVoice(entry.voice);
   const applied = [];
   const note = (x) => applied.push(x);
