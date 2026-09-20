@@ -13,6 +13,7 @@ export const CONTROLS = [
   { id: "grit", group: "Tone", label: "Grit", left: "Smoother", right: "Grittier", hint: "Operator feedback" },
   { id: "width", group: "Tone", label: "Chorus speed", left: "Still", right: "Faster", hint: "Opposite detune between parallel carriers: a bigger difference beats faster (DX7 output is mono, so this is beating, not stereo)" },
   { id: "chorusSmooth", group: "Tone", label: "Chorus smoothness", left: "Wobblier", right: "Smoother", hint: "Detune on modulators causes wobble rather than chorus; smoother pulls it to centre" },
+  { id: "subOctave", group: "Layers", label: "Sub-octave", left: "None", right: "Full", hint: "A second carrier an octave below the note: two notes for every key, which is what makes a bass jump between registers" },
   { id: "growl", group: "Tone", label: "Growl", left: "Clean", right: "Rough", hint: "A modulator below the note's own pitch, which puts partials underneath it and roughens the tone. A third of real DX7 patches have one" },
   { id: "keyTrack", group: "Tone", label: "Across the keyboard", left: "High notes darker", right: "High notes brighter", hint: "Keyboard level scaling on the modulators" },
   { id: "register", group: "Tone", label: "Octave", left: "Down", right: "Up", steps: 4, hint: "Voice transpose, up to two octaves either way" },

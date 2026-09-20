@@ -179,6 +179,14 @@ export function tailor(entry, sliders, { targets: override } = {}) {
         `operator ${added.op} brought in to modulate operator ${added.target}${added.from !== added.to ? ` (algorithm ${added.from} → ${added.to})` : ""}`,
       );
   }
+  if (on("subOctave", 0.05)) {
+    const added = M.setSubOctave(v, s.subOctave);
+    if (added?.removed) note("sub-octave removed");
+    else if (added?.raised) note("sub-octave louder");
+    else if (added)
+      note(`sub-octave carrier on operator ${added.op}${added.from !== added.to ? ` (algorithm ${added.from} → ${added.to})` : ""}`);
+    else if (s.subOctave > 0) note("no sub-octave: every carrier is already in use");
+  }
   const wantsTine = on("tineLevel", 0.05) || on("tinePitch", 0.05) || on("tineTouch", 0.05);
   const builtTine = wantsTine ? M.ensureTine(v, { ratio: tineRatio(s.tinePitch), level: 60 + 25 * Math.max(0, s.tineLevel) }) : null;
   if (builtTine)
@@ -373,6 +381,8 @@ export function unavailableControls(voice) {
   const noTine = "this voice has no tine layer, and no operator can be freed to build one";
   if (!L.tine.length && !modulatorForCarrier(voice)) for (const id of ["tineLevel", "tinePitch", "tineTouch"]) out[id] = noTine;
   if (!L.sustain.length) out.sustainTone = "this voice has no sustain layer";
+  // A sub-octave needs a spare carrier, here or in an algorithm this one swaps into cleanly.
+  if (!M.setSubOctave(cloneVoice(voice), 0.5)) out.subOctave = "every carrier is in use, and no interchangeable algorithm has a spare one";
   const tineTowers = L.towers.filter((t) => t.role === "tine").length;
   if (!tineTowers || tineTowers === L.towers.length) out.balance = "needs a tine tower and a separate sustain tower";
   if (!L.hammer.length && !freeOperator(voice)) {

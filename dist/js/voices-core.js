@@ -321,6 +321,18 @@ const D = [
       OFF,
       OFF,
     ])],
+  // Written by Admiral in OWL on 2026-09-19, starting from the Growl control and then edited by
+  // hand. Two carriers an octave apart (OP1 at 0.5, OP3 at 1) give every key two notes, and their
+  // modulators sustain differently, so which octave dominates shifts through the note.
+  ["bass", "funk bass octave jumper growl sub gritty slap picked dual", () =>
+    voice("GRIT FUNK", 8, 7, [
+      op(0.5, 91, [69, 58, 31, 85, 99, 95, 0, 0], { velSens: 2, det: -2, rateScaling: 2 }),
+      op(1, 69, [75, 30, 13, 85, 97, 85, 82, 0], { det: 5, rateScaling: 2 }),
+      op(1, 84, [69, 58, 31, 85, 99, 97, 0, 0], { velSens: 2, det: 2, rateScaling: 2, breakpoint: 0, rightDepth: 12, rightCurve: 0 }),
+      op(1, 83, [75, 38, 19, 85, 94, 72, 69, 0], { breakpoint: 39, rightDepth: 20, rightCurve: 3 }),
+      op(1, 85, [75, 41, 19, 85, 97, 86, 83, 0]),
+      op(4, 88, [75, 58, 13, 85, 91, 80, 78, 0], { rateScaling: 3 }),
+    ], { transpose: 12 })],
   ["bass", "sub bass deep 808 sine low rumble dubstep trap", () =>
     voice("SUB BASS", 5, 0, [
       op(0.5, 99, [99, 99, 99, 70, 99, 99, 99, 0], { velSens: 1 }),

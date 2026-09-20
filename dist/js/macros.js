@@ -3,7 +3,7 @@
 
 import { ALGORITHMS, operatorRoles, opRatio, clamp } from "./dx7.js";
 import { Env, LFO_HZ, lfoDelaySeconds, PITCH_LEVEL, pitchOctPerSecond } from "./render.js";
-import { analyzeLayers, freeOperator, makeHammer, fixedFor, isHammer, modulatorForCarrier, algorithmForAudibleFeedback, retargetAlgorithm } from "./layers.js";
+import { analyzeLayers, freeOperator, makeHammer, fixedFor, isHammer, modulatorForCarrier, algorithmForAudibleFeedback, retargetAlgorithm, interchangeableWith } from "./layers.js";
 
 const roles = (v) => operatorRoles(v.algorithm);
 const carriers = (v) => roles(v).filter((r) => r.carrier).map((r) => v.ops[r.op - 1]);
@@ -662,3 +662,72 @@ export function setTail(v, x) {
   return v;
 }
 
+
+/**
+ * A second carrier an octave below the first: two notes for every key, which is what makes a
+ * bass "jump". Admiral found this by hand - the growl control makes a sub-unity *modulator*,
+ * while a sub-unity *carrier* is a different thing entirely, and nothing here could ask for it.
+ *
+ * It needs a spare carrier. If the algorithm has none free it steps to an interchangeable one
+ * that does, the same move the hammer and the tine builders make. Returns what changed, or null.
+ */
+export function setSubOctave(v, x) {
+  if (Math.abs(x) < 0.05) return null;
+  const sub = () => carriers(v).find((o) => o.level > 0 && !o.mode && opRatio(o) <= 0.55);
+  if (x < 0) {
+    // Take it away: quieten whatever is playing underneath, and silence it at the extreme.
+    const o = sub();
+    if (!o) return null;
+    o.level = clamp(o.level * (1 + x), 0, 99);
+    if (x <= -0.9) o.level = 0;
+    return { removed: true };
+  }
+  const existing = sub();
+  if (existing) {
+    existing.level = clamp(Math.max(existing.level, 40 + 45 * x), 0, 99);
+    return { op: v.ops.indexOf(existing) + 1, raised: true, from: v.algorithm, to: v.algorithm };
+  }
+  const from = v.algorithm;
+  let spare = freeCarrier(v);
+  if (!spare) {
+    // No spare carrier here: try an algorithm that swaps in cleanly and has one.
+    for (const a of interchangeableWith(v.algorithm)) {
+      const moved = retargetAlgorithm(v, a);
+      if (moved.lostEdges === 0 && freeCarrier(moved.voice)) {
+        Object.assign(v, moved.voice);
+        spare = freeCarrier(v);
+        break;
+      }
+    }
+  }
+  if (!spare) return null;
+  const main = carriers(v)
+    .filter((o) => o.level > 0)
+    .sort((a, b) => b.level - a.level)[0];
+  if (!main) return null;
+  Object.assign(spare, {
+    mode: 0,
+    coarse: 0, // the DX7's 0.5 ratio: one octave down
+    fine: 0,
+    detune: 7,
+    level: clamp(40 + 45 * x, 0, 99),
+    rates: [...main.rates],
+    levels: [...main.levels],
+    velSens: main.velSens,
+    rateScaling: main.rateScaling,
+    breakpoint: main.breakpoint,
+    leftDepth: main.leftDepth,
+    rightDepth: main.rightDepth,
+    leftCurve: main.leftCurve,
+    rightCurve: main.rightCurve,
+    ams: 0,
+  });
+  return { op: v.ops.indexOf(spare) + 1, from, to: v.algorithm };
+}
+
+/** A carrier that is silent, and so free to become something else. */
+function freeCarrier(voice) {
+  const alg = ALGORITHMS[voice.algorithm];
+  for (const c of alg.carriers) if (!voice.ops[c - 1].level) return voice.ops[c - 1];
+  return null;
+}
