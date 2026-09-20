@@ -9,6 +9,12 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+
+/** True when this file was run directly, rather than imported. Paths with spaces need the URL decoded. */
+const runAsScript = () => process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
 /** Module specifiers in JavaScript: static imports, dynamic imports, and URLs for workers. */
 export function stampJs(source, version) {
   return source
@@ -35,7 +41,7 @@ async function* walk(dir) {
 }
 
 // node tools/stamp.mjs <dir> <version>
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (runAsScript()) {
   const [dir = "dist", version = String(Date.now())] = process.argv.slice(2);
   const short = version.slice(0, 12).replace(/[^\w.-]/g, "");
   let changed = 0;
