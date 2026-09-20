@@ -111,14 +111,19 @@ export function createClassicEditor({ root, onChange, onPreview }) {
     future.length = 0;
   };
 
-  /** A change that keeps the panel's layout: update values in place so typing is not interrupted. */
-  function refresh() {
+  /**
+   * A change that keeps the panel's layout: update values in place. Only the control being
+   * typed into is left alone, because replacing its text mid-keystroke would fight the typist.
+   * Everything else must follow the voice, or a dragged value changes the sound while the box
+   * still shows the old number - and the next drag then starts from a number that is not real.
+   */
+  function refresh(typing = null) {
     for (const input of root.querySelectorAll("[data-param]")) {
       const table = input.dataset.scope === "op" ? OP_PARAMS : VOICE_PARAMS;
       const p = table.find((q) => q.id === input.dataset.param);
       const target = input.dataset.scope === "op" ? voice.ops[op - 1] : voice;
       const value = getParam(target, p.path);
-      if (input !== document.activeElement && +input.value !== value) input.value = value;
+      if (input !== typing && +input.value !== value) input.value = value;
       const out = input.parentElement.querySelector(`[data-out="${p.id}"]`);
       if (out) out.value = displayValue(p, value, target);
     }
@@ -193,10 +198,10 @@ export function createClassicEditor({ root, onChange, onPreview }) {
   }
 
   /** An edit the app should keep. */
-  function commit({ rebuild = false } = {}) {
+  function commit({ rebuild = false, typing = null } = {}) {
     onChange(voice);
     onPreview(previewVoice());
-    rebuild ? draw() : refresh();
+    rebuild ? draw() : refresh(typing);
   }
 
   function setVoice(next, { reset = true } = {}) {
@@ -212,7 +217,7 @@ export function createClassicEditor({ root, onChange, onPreview }) {
   }
 
   // ------------------------------------------------------------- editing
-  function apply(scope, id, raw) {
+  function apply(scope, id, raw, typing = null) {
     const table = scope === "op" ? OP_PARAMS : VOICE_PARAMS;
     const p = table.find((q) => q.id === id);
     if (!p) return;
@@ -222,15 +227,41 @@ export function createClassicEditor({ root, onChange, onPreview }) {
     push();
     setParam(target, p.path, value);
     // The algorithm decides which operators are carriers, so the whole panel is redrawn.
-    commit({ rebuild: p.id === "algorithm" });
+    commit({ rebuild: p.id === "algorithm", typing });
   }
 
   root.addEventListener("input", (e) => {
     const t = e.target;
     if (t.dataset.param == null) return;
     if (t.type === "number" && t.value === "") return; // mid-typing
-    apply(t.dataset.scope, t.dataset.param, +t.value);
+    apply(t.dataset.scope, t.dataset.param, +t.value, t);
   });
+  // Drag a value up or down, the way a hardware editor lets you. The arrow keys and typing
+  // still work: a drag only starts once the pointer has actually moved.
+  let drag = null;
+  root.addEventListener("pointerdown", (e) => {
+    const num = e.target.closest(".pr-num");
+    if (!num) return;
+    drag = { num, startY: e.clientY, from: +num.value, moved: false, id: e.pointerId };
+  });
+  root.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const steps = Math.round((drag.startY - e.clientY) / 3); // 3 px per step, fine enough to land on a number
+    if (!steps && !drag.moved) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      drag.num.setPointerCapture?.(e.pointerId);
+      root.classList.add("dragging");
+    }
+    e.preventDefault();
+    apply(drag.num.dataset.scope, drag.num.dataset.param, drag.from + steps * (e.shiftKey ? 10 : 1));
+  });
+  for (const type of ["pointerup", "pointercancel"])
+    root.addEventListener(type, () => {
+      if (drag?.moved) root.classList.remove("dragging");
+      drag = null;
+    });
+
   root.addEventListener("click", (e) => {
     const sel = e.target.closest("[data-op]");
     if (sel) return (op = +sel.dataset.op), draw();

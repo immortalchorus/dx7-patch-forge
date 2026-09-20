@@ -107,12 +107,43 @@ $("#groupTabs").onclick = (e) => {
   drawSliders();
 };
 
+/**
+ * Update the sliders in place. Rebuilding the panel between the two halves of a double-click
+ * replaces the element under the pointer, and the browser then never reports the double-click
+ * at all, so resetting a slider by double-clicking it silently did nothing.
+ */
+function syncSliders() {
+  const values = sliders();
+  const desc = original()?.sliders || neutralSliders();
+  for (const input of document.querySelectorAll("#sliders input[data-id]")) {
+    const c = CONTROLS.find((k) => k.id === input.dataset.id);
+    const x = values[c.id] || 0;
+    // Leave the control alone only while it is being dragged; otherwise the thumb must follow
+    // the value, or a reset moves the sound without moving the slider.
+    if (!(state.dragging && input === document.activeElement) && +input.value !== x) input.value = x;
+    input.style.setProperty("--pos", `${((x + 1) / 2) * 100}%`);
+    const out = document.getElementById(`o-${c.id}`);
+    if (out) out.value = describeValue(c, x);
+    input.closest(".slider").classList.toggle("changed", Math.abs(x - (desc[c.id] || 0)) > 0.005);
+  }
+  drawSliderCounts(values);
+}
+
+function drawSliderCounts(values) {
+  const counts = Object.fromEntries(GROUPS.map((g) => [g, CONTROLS.filter((c) => c.group === g && Math.abs(values[c.id]) > 0.005).length]));
+  document.querySelectorAll("#groupTabs [data-group]").forEach((b) => (b.dataset.count = counts[b.dataset.group] || ""));
+  $("#shaperStatus").textContent = state.edits[state.selected] ? "edited · double-click resets a slider" : "0 = starting voice";
+}
+
 function drawSliders() {
   const focusId = document.activeElement?.dataset?.id;
   const values = sliders();
   const desc = original()?.sliders || neutralSliders();
-  const counts = Object.fromEntries(GROUPS.map((g) => [g, CONTROLS.filter((c) => c.group === g && Math.abs(values[c.id]) > 0.005).length]));
-  document.querySelectorAll("#groupTabs [data-group]").forEach((b) => (b.dataset.count = counts[b.dataset.group] || ""));
+  // Only rebuild when the panel's shape changes; otherwise update what is already there.
+  const shape = CONTROLS.filter((c) => c.group === state.group).map((c) => c.id + (current()?.unavailable?.[c.id] ? "!" : "")).join(",");
+  if (shape === state.sliderShape) return syncSliders();
+  state.sliderShape = shape;
+  drawSliderCounts(values);
   $("#sliders").innerHTML = CONTROLS.filter((c) => c.group === state.group)
     .map((c) => {
       const x = values[c.id] || 0;
@@ -132,9 +163,7 @@ function drawSliders() {
       </div>`;
     })
     .join("");
-  const edited = !!state.edits[state.selected];
   if (focusId) $(`#s-${focusId}`)?.focus();
-  $("#shaperStatus").textContent = edited ? "edited · double-click resets a slider" : "0 = starting voice";
 }
 
 $("#sliders").addEventListener("input", (e) => {
@@ -149,7 +178,7 @@ $("#sliders").addEventListener("input", (e) => {
 });
 $("#sliders").addEventListener("pointerdown", () => (state.dragging = true));
 addEventListener("pointerup", () => {
-  if (state.dragging) (state.dragging = false), drawSliders();
+  if (state.dragging) (state.dragging = false), syncSliders();
 });
 $("#sliders").addEventListener("dblclick", (e) => {
   const input = e.target.closest("input[data-id]");

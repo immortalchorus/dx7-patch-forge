@@ -321,6 +321,9 @@ body.view-classic .workbench { grid-template-columns: minmax(600px, 1.35fr) minm
 .pr-range { width: 100%; accent-color: var(--blue); height: 16px; }
 .pr-num { width: 100%; background: var(--charcoal-2); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: 11px var(--mono); padding: 3px 4px; text-align: right; }
 .pr-num:focus, .pr-range:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.pr-num { cursor: ns-resize; }
+.cl-cols.dragging, .dragging .pr-num { user-select: none; }
+.dragging { cursor: ns-resize; }
 
 .eg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
 .eg-cell { display: flex; align-items: center; gap: 5px; }
