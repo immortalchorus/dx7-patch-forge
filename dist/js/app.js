@@ -757,16 +757,18 @@ function drawRoll() {
       }</div>`;
     })
     .join("");
-  $("#velLane").innerHTML = p.steps
+  $("#velLane").innerHTML = `<i class="lane-label">VEL</i>` + p.steps
     .map(
       (s, i) =>
         `<div class="vbar${s.note == null ? " rest" : ""}${i === loop.head ? " head" : ""}" data-i="${i}" role="slider" tabindex="0"
         aria-label="Step ${i + 1} velocity" aria-valuemin="1" aria-valuemax="127" aria-valuenow="${s.vel}" title="Velocity ${s.vel}"><b style="height:${(s.vel / 127) * 100}%"></b></div>`,
     )
     .join("");
-  $("#tieLane").innerHTML = p.steps
-    .map((s, i) => `<button class="tie${s.tie ? " on" : ""}" data-i="${i}" aria-pressed="${s.tie}" title="Hold the note before it through step ${i + 1}">hold</button>`)
-    .join("");
+  $("#tieLane").innerHTML =
+    `<i class="lane-label">HOLD</i>` +
+    p.steps
+      .map((s, i) => `<button class="tie${s.tie ? " on" : ""}" data-i="${i}" aria-pressed="${s.tie}" title="Hold the note before it through step ${i + 1}"></button>`)
+      .join("");
 }
 
 function editPattern(change) {
