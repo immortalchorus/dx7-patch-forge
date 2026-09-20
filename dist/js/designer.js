@@ -151,8 +151,10 @@ export function tailor(entry, sliders, { targets: override } = {}) {
   // derived from slider positions. Everything below then works the same way.
   const targets = override ? { ...targetsFor(base, s), ...override } : targetsFor(base, s);
   let v = cloneVoice(entry.voice);
-  const applied = [];
-  const note = (x) => applied.push(x);
+  // Each change is a record: which control caused it, how far it was pushed, and the sentence
+  // shown to the user. `applied` is derived from it, so the prose and the data cannot disagree.
+  const changes = [];
+  const note = (text, id = null, amount = null) => changes.push({ id, amount, text });
   const on = (id, t = 0.1) => Math.abs(s[id]) > t;
 
   // Structural edits first: they change the algorithm and operator numbering.
@@ -199,34 +201,34 @@ export function tailor(entry, sliders, { targets: override } = {}) {
   if (hammerChange?.unavailable) note(`no hammer: ${hammerChange.unavailable}`);
   else if (hammerChange)
     note(`algorithm ${hammerChange.from} → ${hammerChange.to} to free operator ${hammerChange.freed} for a hammer${hammerChange.merged ? ` (tower ${hammerChange.merged.from} merged into tower ${hammerChange.merged.into})` : ""}`);
-  else if (on("hammer", 0.05) || on("hammerPitch", 0.05)) note("hammer");
+  else if (on("hammer", 0.05) || on("hammerPitch", 0.05)) note("hammer", "hammer", s.hammer);
 
   // Direct edits: they change timbre, so the measured searches below run after them.
   const octaves = registerOctaves(s.register);
   if (octaves) M.shiftOctaves(v, octaves), note(`${octaves > 0 ? "up" : "down"} ${Math.abs(octaves)} octave${Math.abs(octaves) > 1 ? "s" : ""}`);
-  if (on("hollow", 0.15)) M.setBody(v, s.hollow), note(s.hollow < 0 ? "hollow 1:2 modulators" : "full 1:1 modulators");
-  if (on("harm", 0.2)) M.setHarmonicity(v, s.harm), note(s.harm > 0 ? "purer ratios" : "inharmonic modulators");
-  if (on("grit", 0.15)) M.setGrit(v, s.grit), note(`feedback ${v.feedback}`);
-  if (on("width", 0.15)) M.setWidth(v, s.width), note(s.width > 0 ? "faster chorus" : "less chorus");
-  if (on("chorusSmooth", 0.1)) M.setChorusSmooth(v, s.chorusSmooth), note(s.chorusSmooth > 0 ? "smoother chorus" : "wobblier chorus");
+  if (on("hollow", 0.15)) M.setBody(v, s.hollow), note(s.hollow < 0 ? "hollow 1:2 modulators" : "full 1:1 modulators", "hollow", s.hollow);
+  if (on("harm", 0.2)) M.setHarmonicity(v, s.harm), note(s.harm > 0 ? "purer ratios" : "inharmonic modulators", "harm", s.harm);
+  if (on("grit", 0.15)) M.setGrit(v, s.grit), note(`feedback ${v.feedback}`, "grit", s.grit);
+  if (on("width", 0.15)) M.setWidth(v, s.width), note(s.width > 0 ? "faster chorus" : "less chorus", "width", s.width);
+  if (on("chorusSmooth", 0.1)) M.setChorusSmooth(v, s.chorusSmooth), note(s.chorusSmooth > 0 ? "smoother chorus" : "wobblier chorus", "chorusSmooth", s.chorusSmooth);
   // Layer edits are deliberate timbre changes: measure their effect so the overall
   // brightness search below keeps it, and only corrects side effects (such as the extra
   // modulation from merging towers when a hammer is added).
   const layerIds = ["tineLevel", "tinePitch", "sustainTone", "balance"];
   const layerEdit = layerIds.some((k) => on(k, 0.05));
   const beforeLayers = layerEdit ? measure(v).centroid : 0;
-  if (on("tineLevel", 0.05) && !builtTine) M.setTineLevel(v, s.tineLevel), note(`tine ${s.tineLevel > 0 ? "louder" : "softer"}`);
-  if (on("tinePitch", 0.05) && !builtTine) M.setTinePitch(v, s.tinePitch), note(`tine ratio ${analyzeLayers(v).tine.map((n) => v.ops[n - 1].coarse).join("/")}`);
-  if (on("tineTouch", 0.05)) M.setTineTouch(v, s.tineTouch), note("tine velocity");
-  if (on("sustainTone", 0.05)) M.setSustainTone(v, s.sustainTone), note(`sustain ${s.sustainTone > 0 ? "more sawtooth" : "softer"}`);
-  if (on("balance", 0.05)) M.setLayerBalance(v, s.balance), note(`more ${s.balance > 0 ? "attack" : "sustain"}`);
+  if (on("tineLevel", 0.05) && !builtTine) M.setTineLevel(v, s.tineLevel), note(`tine ${s.tineLevel > 0 ? "louder" : "softer"}`, "tineLevel", s.tineLevel);
+  if (on("tinePitch", 0.05) && !builtTine) M.setTinePitch(v, s.tinePitch), note(`tine ratio ${analyzeLayers(v).tine.map((n) => v.ops[n - 1].coarse).join("/")}`, "tinePitch", s.tinePitch);
+  if (on("tineTouch", 0.05)) M.setTineTouch(v, s.tineTouch), note("tine velocity", "tineTouch", s.tineTouch);
+  if (on("sustainTone", 0.05)) M.setSustainTone(v, s.sustainTone), note(`sustain ${s.sustainTone > 0 ? "more sawtooth" : "softer"}`, "sustainTone", s.sustainTone);
+  if (on("balance", 0.05)) M.setLayerBalance(v, s.balance), note(`more ${s.balance > 0 ? "attack" : "sustain"}`, "balance", s.balance);
   if (layerEdit) targets.centroid *= measure(v).centroid / beforeLayers;
-  if (on("growl", 0.05)) M.setGrowl(v, s.growl), note(s.growl > 0 ? "sub-harmonic growl" : "no sub-harmonic");
-  if (on("tail", 0.05)) M.setTail(v, s.tail), note(s.tail > 0 ? "long tail after the decay" : "single decay, no tail");
-  if (on("keyTrack")) M.setKeyTracking(v, s.keyTrack), note(s.keyTrack < 0 ? "high notes darker" : "high notes brighter");
-  if (on("pivot", 0.05)) M.setScalingPivot(v, s.pivot), note("scaling break point moved");
-  if (on("rateKey")) M.setRateScaling(v, s.rateKey), note("rate scaling");
-  if (on("velBright", 0.05) || on("velLoud", 0.05)) M.setVelocity(v, s), note("velocity response");
+  if (on("growl", 0.05)) M.setGrowl(v, s.growl), note(s.growl > 0 ? "sub-harmonic growl" : "no sub-harmonic", "growl", s.growl);
+  if (on("tail", 0.05)) M.setTail(v, s.tail), note(s.tail > 0 ? "long tail after the decay" : "single decay, no tail", "tail", s.tail);
+  if (on("keyTrack")) M.setKeyTracking(v, s.keyTrack), note(s.keyTrack < 0 ? "high notes darker" : "high notes brighter", "keyTrack", s.keyTrack);
+  if (on("pivot", 0.05)) M.setScalingPivot(v, s.pivot), note("scaling break point moved", "pivot", s.pivot);
+  if (on("rateKey")) M.setRateScaling(v, s.rateKey), note("rate scaling", "rateKey", s.rateKey);
+  if (on("velBright", 0.05) || on("velLoud", 0.05)) M.setVelocity(v, s), note("velocity response", "velBright", s.velBright);
   if (["vibrato", "tremolo", "wobble", "lfoRate", "onset"].some((k) => on(k, 0.05))) {
     M.setMovement(v, s);
     const l = M.lfoState(v);
@@ -236,13 +238,13 @@ export function tailor(entry, sliders, { targets: override } = {}) {
     if (l.wobble > 0.01) parts.push(`timbre wobble ${Math.round(l.wobble * 100)}%`);
     if (parts.length) note(`${parts.join(", ")} at ${l.hz.toFixed(1)} Hz${l.delay > 0.05 ? ` after ${l.delay.toFixed(1)} s` : ""}`);
   }
-  if (on("scoop", 0.05) || on("fall", 0.05)) M.setPitchShape(v, s), note("pitch envelope");
+  if (on("scoop", 0.05) || on("fall", 0.05)) M.setPitchShape(v, s), note("pitch envelope", "scoop", s.scoop);
   if (targets.decay >= SUSTAINED && base.decay < SUSTAINED) M.makeSustained(v), note("sustains while held");
   if (targets.decay && targets.decay < SUSTAINED && (base.decay >= SUSTAINED || base.sustain > -18)) M.makeDecaying(v), note("decays while held");
-  if (on("sustain", 0.05)) M.setSustain(v, s.sustain), note(`sustain ${pct(s.sustain)}`);
+  if (on("sustain", 0.05)) M.setSustain(v, s.sustain), note(`sustain ${pct(s.sustain)}`, "sustain", s.sustain);
   if (targets.release) M.setRelease(v, targets.release), note(`release ${targets.release.toFixed(2)} s`);
   if (targets.attack) M.setAttack(v, targets.attack);
-  if (on("bark", 0.05)) note(s.bark > 0 ? "attack bite" : "softer attack bite");
+  if (on("bark", 0.05)) note(s.bark > 0 ? "attack bite" : "softer attack bite", "bark", s.bark);
 
   // Modulator envelopes carry both the attack bite and timbre over time; the evolve swing is
   // searched against the measured late/early brightness ratio.
@@ -290,21 +292,21 @@ export function tailor(entry, sliders, { targets: override } = {}) {
     }
   }
   v = M.avoidEnvelopeClick(shaped());
-  if (targets.attack) note(`attack ${(targets.attack * 1000).toFixed(0)} ms`);
-  if (targets.decay && targets.decay < SUSTAINED) note(`decay ${targets.decay.toFixed(2)} s`);
-  if (targets.evolveRatio) note(`${s.evolve > 0 ? "opens up" : "closes down"} over ~${evolveSeconds(s.evolveTime).toFixed(1)} s`);
-  if (Math.abs(brightTotal) >= 2) note(`${brightTotal > 0 ? "more" : "less"} modulation (${brightTotal > 0 ? "+" : ""}${Math.round(brightTotal)} levels)`);
+  if (targets.attack) note(`attack ${(targets.attack * 1000).toFixed(0)} ms`, "attack", s.attack);
+  if (targets.decay && targets.decay < SUSTAINED) note(`decay ${targets.decay.toFixed(2)} s`, "decay", s.decay);
+  if (targets.evolveRatio) note(`${s.evolve > 0 ? "opens up" : "closes down"} over ~${evolveSeconds(s.evolveTime).toFixed(1)} s`, "evolve", s.evolve);
+  if (Math.abs(brightTotal) >= 2) note(`${brightTotal > 0 ? "more" : "less"} modulation (${brightTotal > 0 ? "+" : ""}${Math.round(brightTotal)} levels)`, "bright", s.bright);
 
   // Level last: carriers only, so the sound is unchanged apart from loudness.
   const auto = entry.autoLevel === false && !s.autoLevel ? 0 : autoLevel(v);
   const trim = s.level < 0 ? 24 * s.level : 6 * s.level;
   if (trim) M.carrierGain(v, trim);
   const peak = peakLevel(v);
-  if (auto || entry.autoLevel !== false || s.autoLevel) note(`level ${auto >= 0 ? "+" : ""}${auto.toFixed(1)} dB automatic`);
-  if (trim) note(`level ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim`);
+  if (auto || entry.autoLevel !== false || s.autoLevel) note(`level ${auto >= 0 ? "+" : ""}${auto.toFixed(1)} dB automatic`, "level", 0);
+  if (trim) note(`level ${trim > 0 ? "+" : ""}${trim.toFixed(1)} dB trim`, "level", s.level);
 
   const features = { ...measure(v, full), peak, peakDb: 20 * Math.log10(peak / 2) };
-  return { entry, voice: v, features, base, targets, applied, sliders: s, error: targetError(features, targets, s), unavailable: unavailableControls(entry.voice) };
+  return { entry, voice: v, features, base, targets, changes, applied: changes.map((c) => c.text), sliders: s, error: targetError(features, targets, s), unavailable: unavailableControls(entry.voice) };
 }
 
 // The measured searches edit the unshaped voice and re-apply the modulator shaping for each
