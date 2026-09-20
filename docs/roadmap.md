@@ -24,13 +24,18 @@ the hammer control already did:
 width still needs two parallel carriers, which no control can conjure from one. Attack bite on a
 freshly built modulator is weaker than it should be.
 
-## 2. More intuitive sliders
+## 2. More intuitive sliders — three added, chosen from data
 
-Worth thinking through properly rather than adding names. Candidates that came up: a "body"
-versus "air" balance, "pluck" (how much of the attack is a separate short layer), "growl" for
-low-frequency modulator beating, "bell tail" for what happens after the note stops, "breath"
-(see below), and a "played harder" control that sweeps velocity response rather than level.
-Each needs a measurable target, or it cannot be searched for and will drift back to a guess.
+Rather than inventing names, 39,961 distinct voices were surveyed to find what programmers
+actually vary that OWL could not reach (the table is in docs/research.md). Three controls came
+out of it: **Growl** (a sub-unity modulator ratio, in 32% of real patches), **Tail after the
+decay** (the two-stage envelope, 16%) and **Where it thins out** (the level-scaling break
+point, 72% use scaling, almost always breaking near middle C).
+
+Still on the list, now with evidence behind them: a "pluck" control for how much of the attack
+is a separate short layer, and a "played harder" control that sweeps the velocity response
+rather than the level. The strongest remaining lead is fixed-frequency operators: a third of
+all patches use one, and OWL only uses them for the hammer.
 
 ## 3. A breath and noise layer
 

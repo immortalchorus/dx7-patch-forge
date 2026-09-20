@@ -92,6 +92,45 @@ Source groups:
 
 - The front panel draws plain numbered boxes with carriers on one output bus, modulators above their targets joined by straight or diagonal lines, and small right-angled feedback loops (on the left for OP2 in algorithms 2, 9, 15 and 17 and OP4 in 8; running down the stack in 4 and 6). Positions were taken from panel photos and cross-checked against KS and DX. (Wikimedia Commons DX7II-D chart photo; KS; DX)
 
+## What 39,961 patches actually do
+
+Surveyed with `tools/survey.mjs` over the CC0-tagged collection at
+github.com/visualizersdotnl/Yamaha-DX7-patch-library (3,874 cartridge files, de-duplicated to
+39,961 distinct voices). The patches themselves were read for statistics only: none are
+included in OWL, because the collection mixes Yamaha factory ROM banks and commercial
+cartridges with user patches, and an uploader cannot dedicate work they do not own.
+
+| Habit | Share of voices |
+| --- | --- |
+| Feedback used at all (median depth 7 of 7) | 85.6% |
+| At least one detuned operator | 81.3% |
+| Velocity sensitivity on some operator | 74.8% |
+| Keyboard rate scaling | 73.7% |
+| Keyboard level scaling (median break point 39 = C3) | 72.0% |
+| Oscillator key sync on | 69.8% |
+| Transposed away from centre | 49.6% |
+| A high-ratio modulator (6:1 or above) | 49.2% |
+| LFO pitch modulation | 41.5% |
+| At least one fixed-frequency operator (median 10 Hz) | 33.0% |
+| A sub-unity modulator ratio | 32.1% |
+| Pitch envelope away from centre | 30.9% |
+| Amplitude modulation sensitivity | 26.5% |
+| LFO amplitude modulation | 21.3% |
+| Two-stage "double decay" envelope | 15.6% |
+
+Modulator ratios cluster at 1–2 (32.6%), then 2–4 (19.8%), then below 1 (17.8%); 4.1% sit at
+16:1 or above. All six operators are active in 93.1% of voices, and the median voice has two
+carriers. Algorithm use is spread across all 32, led by 5 (11.9%), 18 (9.3%), 2 (9.1%),
+16 (7.3%) and 3 (6.7%).
+
+- **Supports:** Growl (sub-unity ratios), Tail after the decay (double decay), Where it thins
+  out (level-scaling break point). It also confirms controls OWL already had: feedback,
+  detune, velocity, rate scaling and the pitch envelope are all things real programmers reach
+  for constantly.
+- **Still unexploited:** fixed-frequency operators appear in a third of all patches, and OWL
+  only uses them for the hammer. That is the strongest remaining lead, and it is the same
+  mechanism the breath and noise layer needs.
+
 ## Known gaps
 
 - No accessible source gives a programming recipe for marimba or mallets beyond Chowning's wood-drum example.

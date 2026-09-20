@@ -575,3 +575,90 @@ export function ensureFeedbackHeard(v) {
   Object.assign(v, retargetAlgorithm(v, a).voice);
   return { from, to: a };
 }
+
+// ---------------------------------------------------------------- what real patches do
+// These three come from surveying 39,961 distinct voices (see docs/research.md): keyboard
+// level scaling appears in 72% of them, a sub-unity modulator ratio in 32%, and the two-stage
+// "double decay" behind electric pianos and bells in 16%. OWL could shape none of the three.
+
+/**
+ * Where the sound starts thinning out across the keyboard: the level-scaling break point.
+ * Below it a note keeps its body, above it the scaling takes hold. Real patches sit around
+ * C3 (break point 39), which is where this starts. If the voice has no scaling at all, a
+ * gentle darkening above the break point is added, so the control has something to move.
+ */
+export function setScalingPivot(v, x) {
+  if (Math.abs(x) < 0.05) return v;
+  const mods = activeModulators(v).map((m) => v.ops[m.op - 1]);
+  if (!mods.length) return v;
+  const scaled = mods.filter((o) => o.rightDepth > 0 || o.leftDepth > 0);
+  const targets = scaled.length ? scaled : mods;
+  for (const o of targets) {
+    if (!scaled.length) {
+      // Nothing to pivot yet: give it the plain "darker as you go up" shape first.
+      o.rightCurve = 1;
+      o.rightDepth = 40;
+    }
+    // Two octaves either side of wherever it sits now, and never off the end of the keyboard.
+    o.breakpoint = clamp((o.breakpoint || 39) + 24 * x, 0, 99);
+  }
+  return v;
+}
+
+/**
+ * A sub-unity modulator: a ratio below the carrier's own, which puts partials underneath the
+ * note and roughens it. At 0.5 it is the classic growl; near zero it is a slow beating.
+ */
+export function setGrowl(v, x) {
+  if (x <= 0.05) {
+    if (x < -0.05) for (const m of activeModulators(v)) {
+      const o = v.ops[m.op - 1];
+      if (!o.mode && opRatio(o) < 1) (o.coarse = 1), (o.fine = 0);
+    }
+    return v;
+  }
+  // Never the tine or the hammer: those layers are the sound, and rebuilding one as a growl
+  // would quietly destroy an electric piano. If every modulator is spoken for, bring one in.
+  const L = analyzeLayers(v);
+  const spokenFor = new Set([...L.tine, ...L.hammer]);
+  let free = activeModulators(v).filter((m) => !spokenFor.has(m.op));
+  if (!free.length) {
+    if (!ensureModulation(v, { level: 40 })) return v;
+    free = activeModulators(v).filter((m) => !spokenFor.has(m.op));
+    if (!free.length) return v;
+  }
+  // The quietest of what is left, so the body of the sound is disturbed as little as possible.
+  const pick = free.reduce((best, m) => (v.ops[m.op - 1].level < v.ops[best.op - 1].level ? m : best), free[0]);
+  const o = v.ops[pick.op - 1];
+  o.mode = 0;
+  o.coarse = 0; // coarse 0 is the DX7's 0.5 ratio
+  o.fine = Math.round(50 * Math.max(0, 1 - x)); // closer to 0.5 the harder it is pushed
+  o.level = clamp(Math.max(o.level, 40 + 35 * x), 0, 99);
+  return v;
+}
+
+/**
+ * The second, slower decay after the first: the reason a good electric piano keeps ringing
+ * quietly long after its attack has gone, and a bell holds its hum. Positive lengthens the
+ * tail and lowers the shelf it falls to; negative removes it and leaves a single decay.
+ */
+export function setTail(v, x) {
+  if (Math.abs(x) < 0.05) return v;
+  for (const o of carriers(v)) {
+    if (!o.level) continue;
+    if (x > 0) {
+      // A modest step down to a shelf, then a long slow fall from it. The fall is the tail,
+      // so it is rate 3 that matters; dropping the shelf far only makes the patch quiet.
+      const shelf = clamp(o.levels[0] - (6 + 10 * x), 20, 98);
+      o.levels[1] = Math.min(o.levels[1] || 99, shelf);
+      o.rates[1] = clamp(Math.max(o.rates[1], 50 + 20 * x), 5, 99);
+      o.rates[2] = clamp(Math.min(o.rates[2], 40) - 26 * x, 6, 99);
+    } else {
+      // One decay, straight down: raise the shelf back up and let rate 3 take it away.
+      o.levels[1] = clamp(o.levels[1] + (o.levels[0] - o.levels[1]) * -x, 0, 99);
+      o.rates[2] = clamp(o.rates[2] - 30 * x, 5, 99);
+    }
+  }
+  return v;
+}
+

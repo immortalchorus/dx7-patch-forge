@@ -211,7 +211,10 @@ export function tailor(entry, sliders) {
   if (on("sustainTone", 0.05)) M.setSustainTone(v, s.sustainTone), note(`sustain ${s.sustainTone > 0 ? "more sawtooth" : "softer"}`);
   if (on("balance", 0.05)) M.setLayerBalance(v, s.balance), note(`more ${s.balance > 0 ? "attack" : "sustain"}`);
   if (layerEdit) targets.centroid *= measure(v).centroid / beforeLayers;
+  if (on("growl", 0.05)) M.setGrowl(v, s.growl), note(s.growl > 0 ? "sub-harmonic growl" : "no sub-harmonic");
+  if (on("tail", 0.05)) M.setTail(v, s.tail), note(s.tail > 0 ? "long tail after the decay" : "single decay, no tail");
   if (on("keyTrack")) M.setKeyTracking(v, s.keyTrack), note(s.keyTrack < 0 ? "high notes darker" : "high notes brighter");
+  if (on("pivot", 0.05)) M.setScalingPivot(v, s.pivot), note("scaling break point moved");
   if (on("rateKey")) M.setRateScaling(v, s.rateKey), note("rate scaling");
   if (on("velBright", 0.05) || on("velLoud", 0.05)) M.setVelocity(v, s), note("velocity response");
   if (["vibrato", "tremolo", "wobble", "lfoRate", "onset"].some((k) => on(k, 0.05))) {
