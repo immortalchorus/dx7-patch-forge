@@ -12,6 +12,8 @@ Describe a sound in ordinary language, audition it on the built-in keyboard, and
 
 **Monitoring level.** A VOL control beside the keyboard sets how loud the preview is, from +6 dB down to silence, defaulting to -6 dB so the first note is not painful. It sits at the end of the chain, after the peak meter is read, so turning it down cannot hide a patch that would clip in SpaceAge or Dexed, and it never reaches a file.
 
+**SpaceAge.** OWL writes patches for SpaceAge's 80s FM engine, so its `.ssynth` format is a shared interface. What OWL depends on, how each point was verified against the SpaceAge source, and what to re-check when that engine changes is in [docs/spaceage-integration.md](docs/spaceage-integration.md).
+
 **Reverb.** A light monitoring reverb sits after the preview: three spaces (small room, plate, hall) with mix and size. It is generated in the browser as a stereo impulse response, so a mono engine comes out with some width. It is listening equipment only - never written into a patch, never sent over MIDI, and the clip meter still reads the dry signal, because SpaceAge and Dexed clip before any reverb of their own.
 
 **Cartridges.** Open a `.syx` (32-voice cartridge, raw bank, or single voices) or a SpaceAge `.ssynth`, pick any voice and edit it with the sliders, starting exactly as loaded. Store results into a separate 32-slot "My cartridge", which is kept in the browser and downloaded as its own `.syx`. The opened file is never modified.
