@@ -3,7 +3,7 @@
 
 import { ALGORITHMS, operatorRoles, opRatio, clamp } from "./dx7.js";
 import { Env, LFO_HZ, lfoDelaySeconds, PITCH_LEVEL, pitchOctPerSecond } from "./render.js";
-import { analyzeLayers, freeOperator, makeHammer, fixedFor, isHammer } from "./layers.js";
+import { analyzeLayers, freeOperator, makeHammer, fixedFor, isHammer, modulatorForCarrier, algorithmForAudibleFeedback, retargetAlgorithm } from "./layers.js";
 
 const roles = (v) => operatorRoles(v.algorithm);
 const carriers = (v) => roles(v).filter((r) => r.carrier).map((r) => v.ops[r.op - 1]);
@@ -500,4 +500,78 @@ export function setHammer(v, { hammer = 0, hammerPitch = 0, hammerTouch = 0 }) {
     if (hammerTouch) o.velSens = clamp(rel(o.velSens, hammerTouch, 7), 0, 7);
   }
   return change;
+}
+
+// ---------------------------------------------------------------- building structure
+// The macros above adjust a voice's existing structure; these add to it. A voice with nothing
+// but a carrier - the DX7's own INIT, or anything stripped back by hand - has nothing for the
+// tone controls to take hold of, because there is no modulator to raise and no layer to move.
+// Rather than doing nothing, the controls bring an operator in, the way a programmer would.
+
+/**
+ * Make sure something is modulating a sounding carrier. Returns what changed, or null when
+ * the voice already has a modulator at work (the usual case) or has no room for one.
+ */
+export function ensureModulation(v, { level = 24 } = {}) {
+  if (activeModulators(v).length) return null;
+  const found = modulatorForCarrier(v);
+  if (!found) return null;
+  const from = v.algorithm;
+  Object.assign(v, found.voice);
+  const o = v.ops[found.op - 1];
+  const carrier = v.ops[found.target - 1];
+  // A 1:1 modulator following the carrier's own envelope: the plainest useful starting point.
+  Object.assign(o, {
+    mode: 0,
+    coarse: 1,
+    fine: 0,
+    detune: 7,
+    level: clamp(level, 1, 99),
+    rates: [...carrier.rates],
+    levels: [carrier.levels[0], carrier.levels[1], carrier.levels[2], 0],
+    velSens: carrier.velSens,
+    rateScaling: carrier.rateScaling,
+    ams: 0,
+  });
+  return { op: found.op, target: found.target, from, to: v.algorithm };
+}
+
+/**
+ * A tine: a high-ratio modulator with a fast decay, which is what makes an electric piano's
+ * attack (docs/research.md: 14:1 in E.Piano 1, 12:1 stays audible higher up the keyboard).
+ */
+export function makeTine(o, { ratio = 14, level = 72, velSens = 5 } = {}) {
+  Object.assign(o, {
+    mode: 0,
+    coarse: clamp(ratio, 1, 31),
+    fine: 0,
+    detune: 7,
+    level: clamp(level, 0, 99),
+    rates: [96, 60, 45, 70],
+    levels: [99, 42, 0, 0],
+    velSens: clamp(velSens, 0, 7),
+    rateScaling: 2,
+    ams: 0,
+  });
+  return o;
+}
+
+/** Add a tine layer to a voice that has none. Returns what changed, or null. */
+export function ensureTine(v, { ratio = 14, level = 72 } = {}) {
+  if (analyzeLayers(v).tine.length) return null;
+  const found = modulatorForCarrier(v);
+  if (!found) return null;
+  const from = v.algorithm;
+  Object.assign(v, found.voice);
+  makeTine(v.ops[found.op - 1], { ratio, level });
+  return { op: found.op, target: found.target, from, to: v.algorithm };
+}
+
+/** Move the feedback loop onto an operator this voice can actually hear. Returns the algorithm, or null. */
+export function ensureFeedbackHeard(v) {
+  const a = algorithmForAudibleFeedback(v);
+  if (!a) return null;
+  const from = v.algorithm;
+  Object.assign(v, retargetAlgorithm(v, a).voice);
+  return { from, to: a };
 }

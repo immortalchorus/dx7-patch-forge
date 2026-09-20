@@ -12,7 +12,7 @@ import { interpret, stem } from "./language.js";
 import { measure, peakLevel } from "./features.js";
 import { neutralSliders, slidersFromIntent, registerOctaves } from "./controls.js";
 import * as M from "./macros.js";
-import { analyzeLayers, freeOperator, retargetAlgorithm } from "./layers.js";
+import { analyzeLayers, freeOperator, retargetAlgorithm, modulatorForCarrier } from "./layers.js";
 import { CORE_VOICES } from "./voices-core.js";
 import { EMM_VOICES } from "./voices-emm.js";
 
@@ -163,6 +163,28 @@ export function tailor(entry, sliders) {
         `${moved.newEdges ? `, ${moved.newEdges} new` : ""}${moved.carrierChanges ? `, ${moved.carrierChanges} operator role change${moved.carrierChanges > 1 ? "s" : ""}` : ""})`,
     );
   }
+  // A voice with nothing modulating a carrier - the DX7's own INIT, or anything stripped back
+  // by hand - has nothing for the tone controls to take hold of. Bring an operator in rather
+  // than moving controls that cannot do anything.
+  // Only when something is being asked for that needs a modulator. Asking for a darker sound
+  // does not justify building one: there would be nothing to darken.
+  const wantsTone =
+    s.bright > 0.05 || s.bark > 0.05 || s.grit > 0.15 || on("harm", 0.2) || on("hollow", 0.15) || targets.centroid > base.centroid * 1.05;
+  if (wantsTone) {
+    const added = M.ensureModulation(v);
+    if (added)
+      note(
+        `operator ${added.op} brought in to modulate operator ${added.target}${added.from !== added.to ? ` (algorithm ${added.from} → ${added.to})` : ""}`,
+      );
+  }
+  const wantsTine = on("tineLevel", 0.05) || on("tinePitch", 0.05) || on("tineTouch", 0.05);
+  const builtTine = wantsTine ? M.ensureTine(v, { ratio: tineRatio(s.tinePitch), level: 60 + 25 * Math.max(0, s.tineLevel) }) : null;
+  if (builtTine)
+    note(`tine layer built on operator ${builtTine.op}${builtTine.from !== builtTine.to ? ` (algorithm ${builtTine.from} → ${builtTine.to})` : ""}`);
+  if (on("grit", 0.15)) {
+    const moved = M.ensureFeedbackHeard(v);
+    if (moved) note(`algorithm ${moved.from} → ${moved.to} so the feedback is heard`);
+  }
   const hammerChange = M.setHammer(v, s);
   if (hammerChange?.unavailable) note(`no hammer: ${hammerChange.unavailable}`);
   else if (hammerChange)
@@ -183,8 +205,8 @@ export function tailor(entry, sliders) {
   const layerIds = ["tineLevel", "tinePitch", "sustainTone", "balance"];
   const layerEdit = layerIds.some((k) => on(k, 0.05));
   const beforeLayers = layerEdit ? measure(v).centroid : 0;
-  if (on("tineLevel", 0.05)) M.setTineLevel(v, s.tineLevel), note(`tine ${s.tineLevel > 0 ? "louder" : "softer"}`);
-  if (on("tinePitch", 0.05)) M.setTinePitch(v, s.tinePitch), note(`tine ratio ${analyzeLayers(v).tine.map((n) => v.ops[n - 1].coarse).join("/")}`);
+  if (on("tineLevel", 0.05) && !builtTine) M.setTineLevel(v, s.tineLevel), note(`tine ${s.tineLevel > 0 ? "louder" : "softer"}`);
+  if (on("tinePitch", 0.05) && !builtTine) M.setTinePitch(v, s.tinePitch), note(`tine ratio ${analyzeLayers(v).tine.map((n) => v.ops[n - 1].coarse).join("/")}`);
   if (on("tineTouch", 0.05)) M.setTineTouch(v, s.tineTouch), note("tine velocity");
   if (on("sustainTone", 0.05)) M.setSustainTone(v, s.sustainTone), note(`sustain ${s.sustainTone > 0 ? "more sawtooth" : "softer"}`);
   if (on("balance", 0.05)) M.setLayerBalance(v, s.balance), note(`more ${s.balance > 0 ? "attack" : "sustain"}`);
@@ -276,6 +298,8 @@ export function tailor(entry, sliders) {
 // measurement, so shaping never compounds.
 const shapeWith = (s, depth) => (v) => M.shapeModulators(cloneVoice(v), s, depth);
 
+const tineRatio = (pitch = 0) => Math.max(6, Math.min(24, Math.round(14 + 6 * pitch)));
+
 const HEADROOM = 2 * 10 ** (-1 / 20); // 1 dB under the level where SpaceAge and Dexed clip one voice
 
 /** Scale carriers so the loudest note sits just under the clip point. Returns the change in dB. */
@@ -341,8 +365,8 @@ export const entryById = (id) => USER_ENTRIES.get(id) || LIBRARY.find((e) => e.i
 export function unavailableControls(voice) {
   const L = analyzeLayers(voice);
   const out = {};
-  const noTine = "this voice has no tine layer (a high-ratio, fast-decaying modulator)";
-  for (const id of ["tineLevel", "tinePitch", "tineTouch"]) if (!L.tine.length) out[id] = noTine;
+  const noTine = "this voice has no tine layer, and no operator can be freed to build one";
+  if (!L.tine.length && !modulatorForCarrier(voice)) for (const id of ["tineLevel", "tinePitch", "tineTouch"]) out[id] = noTine;
   if (!L.sustain.length) out.sustainTone = "this voice has no sustain layer";
   const tineTowers = L.towers.filter((t) => t.role === "tine").length;
   if (!tineTowers || tineTowers === L.towers.length) out.balance = "needs a tine tower and a separate sustain tower";

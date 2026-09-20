@@ -210,3 +210,52 @@ export function makeHammer(o, { hz = 158.5, level = 88, velSens = 3 } = {}) {
   });
   return o;
 }
+
+/** Operators that are sounding: a carrier with a level, or a modulator that reaches one. */
+export function activeChain(voice) {
+  const alg = ALGORITHMS[voice.algorithm];
+  const live = (op) => voice.ops[op - 1].level > 0;
+  const out = new Set(alg.carriers.filter(live));
+  // A modulator counts only if everything between it and a sounding carrier is sounding too.
+  for (let pass = 0; pass < 6; pass++)
+    for (const [from, to] of alg.edges) if (live(from) && out.has(to)) out.add(from);
+  return out;
+}
+
+/** True when the feedback loop sits on an operator that can actually be heard. */
+export const feedbackHeard = (voice) => activeChain(voice).has(ALGORITHMS[voice.algorithm].fb);
+
+/**
+ * An interchangeable algorithm whose feedback operator is one this voice can hear, or null.
+ * Algorithms 1 and 2 are the plain case: the same routing, with feedback moved from the top of
+ * the long stack to the operator modulating the first carrier.
+ */
+export function algorithmForAudibleFeedback(voice) {
+  if (feedbackHeard(voice)) return null;
+  const heard = activeChain(voice);
+  for (const a of interchangeableWith(voice.algorithm)) {
+    const moved = retargetAlgorithm(voice, a);
+    if (moved.lostEdges === 0 && activeChain(moved.voice).has(ALGORITHMS[a].fb)) return a;
+  }
+  return null;
+}
+
+/**
+ * An operator that could be brought in to modulate a sounding carrier, without disturbing
+ * anything that is already sounding. Returns { op, target, voice, algorithm } or null.
+ * Prefers an operator already wired to a carrier; otherwise frees one, as the hammer does.
+ */
+export function modulatorForCarrier(voice, preferTarget = null) {
+  const alg = ALGORITHMS[voice.algorithm];
+  const heard = activeChain(voice);
+  const carriers = alg.carriers.filter((c) => voice.ops[c - 1].level > 0);
+  if (!carriers.length) return null;
+  const target =
+    (preferTarget && carriers.includes(preferTarget) && preferTarget) ||
+    carriers.reduce((best, c) => (voice.ops[c - 1].level > voice.ops[best - 1].level ? c : best), carriers[0]);
+  const silent = alg.edges.find(([from, to]) => to === target && !heard.has(from));
+  if (silent) return { op: silent[0], target, voice: cloneVoice(voice), algorithm: voice.algorithm };
+  const freed = freeOperator(voice, target);
+  if (!freed) return null;
+  return { op: freed.freed, target: freed.target, voice: freed.voice, algorithm: freed.algorithm };
+}

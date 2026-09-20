@@ -2,30 +2,27 @@
 
 Agreed ideas, roughly in the order they are worth doing. Nothing here is committed to a date.
 
-## 1. Sliders that can build structure, not only adjust it
+## 1. Sliders that can build structure, not only adjust it — mostly done
 
-**The problem, measured.** Start an INIT voice in the classic editor, switch to Interactive, and
-the sliders barely do anything. That is not a bug in the sliders; it is what the sliders are.
-An INIT voice is algorithm 1 with OP1 at level 99 and OP2–OP6 silent, so:
+**What it was.** An INIT voice is algorithm 1 with OP1 at 99 and OP2–OP6 silent. Every macro
+edited structure that already existed, so brightness measured exactly 1.00 however far it was
+pushed, six controls switched off, and grit set a feedback loop on a silent operator.
 
-- `brighten` works on *active* modulators (level above zero). There are none, so it falls to its
-  all-carrier branch, which only touches carriers at ratio 1.5 or above. OP1 is at ratio 1, so
-  brightness stays at exactly 1.00 however far the control is pushed.
-- Six controls are switched off outright, with reasons shown: tine level, tine pitch, tine touch,
-  sustain tone, layer balance and chorus width. They need layers the voice does not have.
-- Grit sets feedback, but the feedback operator in algorithm 1 is OP6, which is silent, so even
-  that does nothing audible.
+**What it does now.** When a control needs structure that is not there, it builds it, the way
+the hammer control already did:
 
-Every macro edits structure that already exists. A designed voice arrives with modulators at
-work, so everything has something to take hold of; one sine wave offers nothing.
+- Asking for a brighter or bitier sound brings an operator in to modulate the loudest carrier,
+  at ratio 1 with the carrier's own envelope. Brightness on an INIT voice now reaches 2.37.
+- The tine controls build a tine layer: a high-ratio, fast-decaying modulator (14:1 as in
+  E.Piano 1), so the attack sparkle appears where there was none.
+- Grit moves the feedback loop onto an operator that can be heard, which for algorithm 1 means
+  stepping to algorithm 2 — the same routing with feedback on the operator that is sounding.
+- Controls are reported unavailable only when the structure genuinely cannot be built.
+- Asking for something *darker* builds nothing: there would be nothing to darken.
 
-**The fix.** Let the controls bring an operator in when one is needed, the way the hammer control
-already restructures a voice through `freeOperator`. Asking for brightness on a voice with no
-active modulator should raise the modulator feeding the loudest carrier, from a sensible ratio
-and envelope, and say so in "why it sounds like this". The same for grit (move feedback to an
-operator that is actually sounding) and for the layer controls (build the layer rather than
-refusing). The DX7's own INIT is one carrier, so the authentic behaviour belongs in the classic
-editor: it is the shaping side that should adapt.
+**What is left.** Sustain tone and layer balance still need a sustain-layer builder, and chorus
+width still needs two parallel carriers, which no control can conjure from one. Attack bite on a
+freshly built modulator is weaker than it should be.
 
 ## 2. More intuitive sliders
 
