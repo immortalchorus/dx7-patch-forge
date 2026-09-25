@@ -255,6 +255,14 @@ textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0091ff22; }
 .loop-controls input[type="number"] { width: 52px; text-align: right; }
 .loop-controls input[type="range"] { width: 78px; accent-color: var(--blue); }
 .loop-controls output, .loop-controls small { font: 10px var(--mono); color: var(--muted); }
+/* Buttons in this row are the house shape, sized to stand with the selects beside them rather
+   than with the taller ones in the loop's header. There is no global button rule in OWL - every
+   button is styled by its container - so a new one in a container that has no rule yet falls all
+   the way back to the browser's own grey, which is how this one ended up looking foreign. */
+.loop-controls button { border: 1px solid var(--line); background: var(--charcoal-2); color: var(--text);
+  border-radius: 4px; padding: 4px 11px; font: 11px var(--ui); cursor: pointer; }
+.loop-controls button:hover { border-color: var(--blue); }
+.loop-controls button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .loop-hint { margin: 8px 0 0; font: 10px var(--mono); color: var(--orange-text); min-height: 12px; }
 
 .roll { display: grid; grid-template-columns: 26px repeat(16, 1fr); gap: 2px; margin-top: 8px; }
@@ -460,6 +468,9 @@ footer { height: 54px; border-top: 1px solid var(--line); display: flex; align-i
 .chl-measure tr.clips td { color: var(--warn); }
 .chl-measure tr.clips .chl-num { color: var(--warn); }
 .chl-hint { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
-#chordLabToggle.on { border-color: var(--orange); color: var(--orange-text); }
+/* Open is shown the way the transport shows playing, because both are UI state rather than
+   something about the patch. Orange in OWL means a carrier, a tie, a selected chord - things in
+   the data - and using it here made the button read as a fifth kind of thing. */
+#chordLabToggle.on { border-color: var(--blue); background: #0091ff22; color: #fff; }
 
 @media
