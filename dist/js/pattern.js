@@ -170,6 +170,35 @@ export function sanitizePattern(p) {
   };
 }
 
+// Where a newly added chord goes: strong beats first, then the offbeats, then whatever is left.
+// A chord that is added but not placed is a chord you cannot hear, which makes the wheel look
+// broken - you click four chords, press play, and the loop plays its old notes.
+const PLACEMENT_ORDER = [0, 4, 8, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15];
+
+/**
+ * Put a chord on a step, so adding one from the wheel is audible straight away.
+ *
+ * Placing a chord on a step that already has a note does not destroy the note: a chord wins over
+ * the note underneath it while it is there, and taking the chord off brings the note back. That
+ * is what makes it safe to do this without asking.
+ *
+ * The chord is then held through the empty rests after it, so it sounds like a chord rather than
+ * a blip, but it never ties over a step that has a note or a chord of its own.
+ * Returns the pattern unchanged when every step already carries a chord.
+ */
+export function placeChord(pattern, chordIndex) {
+  const steps = pattern.steps.map((s) => ({ ...s }));
+  const at = PLACEMENT_ORDER.find((i) => steps[i].chord == null);
+  if (at == null) return pattern;
+  steps[at].chord = chordIndex;
+  steps[at].tie = false;
+  for (let i = at + 1; i < steps.length; i++) {
+    if (steps[i].chord != null || steps[i].note != null) break;
+    steps[i].tie = true;
+  }
+  return { ...pattern, steps };
+}
+
 /** The chord record a step plays, or null if it plays its own note instead. */
 export function stepChord(pattern, index) {
   const at = pattern?.steps?.[index]?.chord;

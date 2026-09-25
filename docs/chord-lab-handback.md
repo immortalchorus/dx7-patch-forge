@@ -99,19 +99,19 @@ above it.
 **`FIFTHS_HANDOVER` has no counterpart** and cannot have one: it is about the sketch, the lanes
 and the MIDI export, none of which OWL has.
 
-### One finding to take back: `chordName` prints enharmonic equivalents in five keys
+### Fixed in both: `chordName` printed enharmonic equivalents in five keys
 
-This is the one thing in this document that is a claim about SpaceAge rather than about OWL, so
-it is stated carefully and is easy to check.
+Found while porting, and on the Admiral's instruction fixed in SpaceAge as well as in OWL rather
+than reproduced. This section records what was wrong and what changed on each side.
 
-`WheelModel::chordName` names a degree by looking up `majorName(keyPosition ± n)`. `majorName`
+`WheelModel::chordName` named a degree by looking up `majorName(keyPosition ± n)`. `majorName`
 switches to flat spellings past position 6, and it does so **regardless of which key is being
-spelled**. So when a degree of a sharp key lands past position 6, it comes back spelled with
-flats, and vice versa. The pitch classes are all correct. Only the letters are wrong.
+spelled**. So when a degree of a sharp key landed past position 6, it came back spelled with
+flats, and vice versa. The pitch classes were all correct. Only the letters were wrong.
 
 Nine chords in five keys:
 
-| Key | Degree | `chordName` prints | Correct spelling |
+| Key | Degree | `chordName` printed | Correct spelling, now |
 | --- | --- | --- | --- |
 | D major | vii | D♭° | C♯° |
 | A major | vii | A♭° | G♯° |
@@ -124,18 +124,33 @@ Nine chords in five keys:
 | D♭ major | IV | F♯ | G♭ |
 
 This is what rule 3 of the brief forbids — "a port that prints enharmonic equivalents
-interchangeably is wrong" — and it is in the original, not in the port.
+interchangeably is wrong" — and it was in the original, not in the port.
 
-`FIFTHS` does not catch it because it checks **self-consistency**, not correctness:
+`FIFTHS` did not catch it because it checked **self-consistency**, not correctness:
 `chordName(key, 4) == majorName(key + 1)` is true by construction whatever `majorName` returns.
 The three hand-written progressions are in C, G and E♭, and all three happen to avoid the break.
 A spelling check that would catch it is one line: the *n*th degree of a major key must use the
 *n*th letter after the tonic's letter, each letter exactly once.
 
-**OWL reproduces this behaviour deliberately**, because the brief says that where the two
-disagree, SpaceAge is right. It is pinned in `tests/harmony.test.js` as the exact set of nine, so
-that if SpaceAge corrects its table, OWL's test fails and names what moved. **If you fix it there,
-that failure is the signal, not a regression.**
+**What changed.**
+
+SpaceAge already had the right algorithm - `spelledScaleDegreeName` in `PluginEditor.cpp`, which
+is what the chord slot labels a person actually reads go through. `WheelModel::chordName` was a
+second implementation of the same arithmetic that disagreed with it. It is now the same method, so
+the two agree; the comment on `degreeSpelling` says so, and says why.
+
+- `Source/SpaceageCircleOfFifths.h` - `chordName` derives the letter and accidental instead of
+  looking up `majorName` at a neighbouring position. New `degreeSpelling(keyPosition, degree)`.
+- `Tests/ProcessorUiChecks.cpp` - the four self-consistent assertions in `FIFTHS` are replaced by
+  the real property: each key uses its seven letters once each, in order from the tonic, each
+  accidental-adjusted to the right pitch. The two that *are* facts in every key - the first degree
+  is the key, the sixth is its relative minor - are kept as they were.
+- OWL mirrors both, in `dist/js/harmony.js` and `tests/harmony.test.js`.
+
+Nothing else in SpaceAge called `chordName`; the drawn wheel labels its segments with
+`majorName`/`minorName` at each position, which is a different and correct use. So the change
+cannot move anything a person currently sees - it corrects a function the gate was the only
+caller of, and it stops the gate blessing a wrong answer.
 
 ## 5. What was **not** ported, and what a person therefore cannot do
 

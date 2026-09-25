@@ -97,21 +97,44 @@ export function degreeNumeral(degree) {
   return NUMERALS[degree] + (degree === 6 ? DIMINISHED : "");
 }
 
+// A key's seven degrees use its seven letters in order, each exactly once: the second degree of
+// D flat major is a kind of E, whatever accidental that needs, and never a kind of D.
+const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+const LETTER_PITCH_CLASS = [0, 2, 4, 5, 7, 9, 11];
+const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+
 /**
- * The chord's own name, for a slot label. The diminished seventh degree gets its symbol because
- * "B" alone would be a lie about what sounds.
+ * How a major key spells its own nth degree: a letter, and whatever accidental puts that letter
+ * on the right pitch.
+ *
+ * This is derived rather than looked up. Naming a degree by reading `majorName` at another wheel
+ * position - which is what SpaceAge did - goes wrong wherever a degree lands past position 6,
+ * because that table switches to flats regardless of the key being spelled. It printed D flat for
+ * the seventh degree of D major, which is the right pitch under the wrong name.
+ */
+export function degreeSpelling(keyPosition, degree) {
+  const key = wrap(keyPosition);
+  const d = ((degree % 7) + 7) % 7;
+  const from = LETTERS.indexOf(majorName(key)[0]);
+  const letterIndex = (from + d) % 7;
+  const target = (pitchClassAt(key) + MAJOR_STEPS[d]) % 12;
+  // Shortest signed distance from the natural letter to the pitch we want, so a letter a semitone
+  // sharp is a sharp rather than eleven flats.
+  const accidental = (((target - LETTER_PITCH_CLASS[letterIndex] + 18) % 12) - 6);
+  const symbol = accidental > 0 ? SHARP : FLAT;
+  return LETTERS[letterIndex] + symbol.repeat(Math.min(3, Math.abs(accidental)));
+}
+
+/**
+ * The chord's own name, for a slot label. The minor degrees carry an m and the diminished seventh
+ * degree gets its symbol, because "B" alone would be a lie about what sounds.
  */
 export function chordName(keyPosition, degree) {
-  switch (degree) {
-    case 0: return majorName(keyPosition);
-    case 3: return majorName(keyPosition - 1);
-    case 4: return majorName(keyPosition + 1);
-    case 1: return minorName(keyPosition - 1);
-    case 5: return minorName(keyPosition);
-    case 2: return minorName(keyPosition + 1);
-    case 6: return majorName(keyPosition + 5) + DIMINISHED;
-    default: return "";
-  }
+  if (!(degree >= 0 && degree < 7)) return "";
+  const base = degreeSpelling(keyPosition, degree);
+  if (degree === 6) return base + DIMINISHED;
+  if (degree === 1 || degree === 2 || degree === 5) return base + "m";
+  return base;
 }
 
 // ---------------------------------------------------------------- scales

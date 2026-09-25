@@ -103,15 +103,39 @@ test("FIFTHS: vii is diminished and its root is the leading note", () => {
 });
 
 test("FIFTHS: chord names agree with the ring they came from", () => {
+  // Two of these are musical facts and hold in every key: the first degree is the key itself, and
+  // the sixth is its relative minor.
   for (let key = 0; key < 12; key++) {
     assert.equal(chordName(key, 0), majorName(key), `key ${key} I`);
-    assert.equal(chordName(key, 3), majorName(key - 1), `key ${key} IV`);
-    assert.equal(chordName(key, 4), majorName(key + 1), `key ${key} V`);
-    assert.equal(chordName(key, 1), minorName(key - 1), `key ${key} ii`);
     assert.equal(chordName(key, 5), minorName(key), `key ${key} vi`);
-    assert.equal(chordName(key, 2), minorName(key + 1), `key ${key} iii`);
+  }
+  // The other four - ii, iii, IV, V against the neighbouring wheel positions - are *not* facts.
+  // They are true only while no degree crosses the point where the name table switches from
+  // sharps to flats, and SpaceAge asserted them as though they were always true, which is what
+  // hid the mis-spellings. They are checked here as pitch, which is what the ring really promises.
+  for (let key = 0; key < 12; key++) {
+    // A position names a pair, so the minor ring's chord is rooted a minor third below the major
+    // ring's: nine semitones up is the same note three semitones down.
+    const samePitch = (name, position, isMajorRing) =>
+      assert.equal(
+        pitchClassOfName(name.replace(/m$/, "")),
+        isMajorRing ? pitchClassAt(position) : (pitchClassAt(position) + 9) % 12,
+        `key ${key}: ${name} should sound at position ${position}`,
+      );
+    samePitch(chordName(key, 3), wrap(key - 1), true);
+    samePitch(chordName(key, 4), wrap(key + 1), true);
+    samePitch(chordName(key, 1), wrap(key - 1), false);
+    samePitch(chordName(key, 2), wrap(key + 1), false);
   }
 });
+
+/** The pitch class a printed chord name sounds, read back off the letter and its accidentals. */
+function pitchClassOfName(name) {
+  const letters = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const sharps = (name.match(new RegExp(SHARP, "g")) || []).length;
+  const flats = (name.match(new RegExp(FLAT, "g")) || []).length;
+  return (letters[name[0]] + sharps - flats + 120) % 12;
+}
 
 // ---------------------------------------------------------------- spelling
 
@@ -526,32 +550,52 @@ test("chordPeak reports the same number the live engine does", async () => {
   }
 });
 
-test("the wheel's spelling matches SpaceAge, including where SpaceAge is wrong", () => {
-  // SpaceAge's rule 3 says a port that prints enharmonic equivalents interchangeably is wrong.
-  // Its own chordName does exactly that in nine places, because the name of a degree is looked up
-  // as `majorName(keyPosition + n)` and that table switches to flats past position 6, whatever key
-  // is being spelled. The pitch classes are all correct; only the letters are wrong.
+test("every key spells its seven degrees on its seven letters, once each", () => {
+  // This is the check that catches what SpaceAge's FIFTHS gate could not. That gate asserted a
+  // degree's name against `majorName` at a neighbouring wheel position, which is self-consistent
+  // by construction and stayed true while the name was wrong: D major's seventh degree printed
+  // D flat, the right pitch under the wrong letter, because the name table switches to flats past
+  // position 6 whatever key is being spelled. Nine chords across five keys were affected.
   //
-  // This is pinned rather than fixed. The brief is explicit that where the two disagree SpaceAge
-  // is right and OWL is wrong, and agreeing with its gates is the whole point of this file. If
-  // SpaceAge corrects its table, this test should fail - and that failure is the signal to follow.
-  // Reported in docs/chord-lab-handback.md.
+  // A key uses each of its seven letters exactly once, in order from the tonic, and the accidental
+  // is whatever puts that letter on the right pitch. Both halves are asserted here, because
+  // either one alone is satisfiable by something wrong.
   const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
-  const known = new Set([
-    "D:7", "A:7", "E:7", "B:7",
-    "F\u266F:3", "F\u266F:5", "F\u266F:7",
-    "D\u266D:2", "D\u266D:4",
-  ]);
-  const found = new Set();
+  const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
   for (let key = 0; key < 12; key++) {
     const tonic = majorName(key);
     const from = LETTERS.indexOf(tonic[0]);
+    const used = [];
     for (let degree = 0; degree < 7; degree++) {
       const printed = chordName(key, degree).replace(/m$/, "").replace(DIMINISHED, "");
-      if (printed[0] !== LETTERS[(from + degree) % 7]) found.add(`${tonic}:${degree + 1}`);
+      assert.equal(printed[0], LETTERS[(from + degree) % 7], `${tonic} major, degree ${degree + 1}: ${printed}`);
+      assert.equal(
+        pitchClassOfName(printed),
+        (pitchClassAt(key) + MAJOR_STEPS[degree]) % 12,
+        `${tonic} major, degree ${degree + 1}: ${printed} is the wrong pitch`,
+      );
+      used.push(printed[0]);
+    }
+    assert.equal(new Set(used).size, 7, `${tonic} major reuses a letter: ${used.join(" ")}`);
+  }
+  // The cases that were wrong before, named outright so a regression is legible.
+  assert.equal(chordName(2, 6), "C" + SHARP + DIMINISHED, "D major's vii");
+  assert.equal(chordName(6, 4), "C" + SHARP, "F sharp major's V");
+  assert.equal(chordName(6, 6), "E" + SHARP + DIMINISHED, "F sharp major's vii");
+  assert.equal(chordName(7, 1), "E" + FLAT + "m", "D flat major's ii");
+  assert.equal(chordName(7, 3), "G" + FLAT, "D flat major's IV");
+});
+
+test("no key needs a double sharp or a double flat", () => {
+  // True of all twelve major keys, and worth pinning: if it ever stops being true the accidental
+  // logic is producing something like F double-sharp where a simpler spelling exists.
+  for (let key = 0; key < 12; key++) {
+    for (let degree = 0; degree < 7; degree++) {
+      const printed = chordName(key, degree);
+      assert.ok(!printed.includes(SHARP + SHARP), `${printed} has a double sharp`);
+      assert.ok(!printed.includes(FLAT + FLAT), `${printed} has a double flat`);
     }
   }
-  assert.deepEqual([...found].sort(), [...known].sort(), "the set of mis-spelled chords has moved");
 });
 
 test("a scale-relative chord is named for what it sounds, not for its formula", () => {

@@ -6,7 +6,7 @@ import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
-import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot } from "./pattern.js";
+import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot, placeChord } from "./pattern.js";
 import { wheelSvg } from "./chord-wheel.js";
 import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral } from "./harmony.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
@@ -989,10 +989,20 @@ function addFromWheel(seg) {
     $("#clProgNote").textContent = `full at ${MAX_CHORDS}`;
     return;
   }
-  editHarmony((harmony) => {
-    harmony.chords = [...harmony.chords, { ...defaultChord(), degree }];
-    lab.selected = harmony.chords.length - 1;
-  });
+  // A chord goes into the progression *and* onto a step. A chord that is only in the list cannot
+  // be heard, which makes the wheel look broken: you click four chords, press play, and the loop
+  // plays whatever it played before.
+  const index = h.chords.length;
+  loop.pattern.harmony.chords = [...h.chords, { ...defaultChord(), degree }];
+  const placed = placeChord(loop.pattern, index);
+  const found = placed !== loop.pattern;
+  loop.pattern = sanitizePattern(placed);
+  lab.selected = index;
+  $("#loopPreset").value = "";
+  pushPattern();
+  drawChordLab();
+  drawRoll();
+  if (!found) $("#clProgNote").textContent = "added, but every step already has a chord";
   auditionSelected();
 }
 

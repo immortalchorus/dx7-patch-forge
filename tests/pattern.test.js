@@ -180,3 +180,49 @@ test("a progression moves by whole octaves, and refuses anything else", async ()
   // With no progression, a pattern still moves by any interval, as it always did.
   assert.ok(shiftPattern(sanitizePattern(defaultPattern()), 7), "a plain pattern still moves by a fifth");
 });
+
+test("a chord added to the progression lands on a step, so it can be heard", async () => {
+  // The bug this pins: adding chords from the wheel put them in the progression but on no step,
+  // so a progression you built yourself was silent and the loop went on playing its old notes.
+  const { placeChord } = await import("../dist/js/pattern.js");
+  const empty = sanitizePattern({
+    ...defaultPattern(),
+    steps: Array.from({ length: STEPS }, () => ({ note: null, vel: 100, tie: false, chord: null })),
+  });
+  let p = { ...empty, harmony: { ...empty.harmony, chords: [0, 4, 5, 3].map((degree) => ({ ...defaultChord(), degree })) } };
+  for (let i = 0; i < 4; i++) p = sanitizePattern(placeChord(p, i));
+  // Strong beats first, and each one held through the rests after it.
+  assert.deepEqual(p.steps.map((s) => s.chord), [0, null, null, null, 1, null, null, null, 2, null, null, null, 3, null, null, null]);
+  for (const i of [0, 4, 8, 12]) {
+    assert.ok(stepEvents(p, i), `step ${i} should sound`);
+    assert.equal(stepEvents(p, i).steps, 4, `step ${i} should be held for four steps`);
+  }
+});
+
+test("placing a chord over a written note keeps the note underneath", async () => {
+  // Placing is non-destructive, which is what makes it safe to do without asking: the chord wins
+  // while it is there, and taking it off brings the note back.
+  const { placeChord } = await import("../dist/js/pattern.js");
+  const withNotes = sanitizePattern(defaultPattern());
+  const written = withNotes.steps[0].note;
+  let p = { ...withNotes, harmony: { ...withNotes.harmony, chords: [defaultChord()] } };
+  p = sanitizePattern(placeChord(p, 0));
+  assert.equal(p.steps[0].chord, 0);
+  assert.equal(p.steps[0].note, written, "the note is still there");
+  assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55], "but the chord is what sounds");
+  // A pattern full of notes has nothing to tie over, so the chord lasts one step.
+  assert.equal(stepEvents(p, 0).steps, 1);
+  // Take the chord off and the note comes back.
+  const off = sanitizePattern({ ...p, steps: p.steps.map((s, i) => (i === 0 ? { ...s, chord: null } : s)) });
+  assert.deepEqual(stepEvents(off, 0).notes, [written]);
+});
+
+test("placing refuses when every step already carries a chord", async () => {
+  const { placeChord } = await import("../dist/js/pattern.js");
+  const base = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
+    steps: Array.from({ length: STEPS }, () => ({ note: null, vel: 100, tie: false, chord: 0 })),
+  });
+  assert.equal(placeChord(base, 0), base, "the same pattern is handed back, not a broken one");
+});
