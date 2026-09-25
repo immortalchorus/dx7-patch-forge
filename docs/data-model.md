@@ -9,7 +9,7 @@ bugs. Everything here is data in, data out: no DOM, no globals, no hidden state.
 `dist/js/app.js` and `dist/js/classic.js` are the only files that touch the page. Everything
 else — `designer.js`, `macros.js`, `layers.js`, `features.js`, `render.js`, `controls.js`,
 `language.js`, `dx7.js`, `ssynth.js`, `match.js`, `sample.js`, `pattern.js`, `harmony.js`,
-`chord-wheel.js` — is pure. `chord-wheel.js` draws, but it returns SVG markup as a string and
+`chord-honeycomb.js` — is pure. `chord-honeycomb.js` draws, but it returns SVG markup as a string and
 never touches an element, the way `algorithm-chart.js` does. This is
 enforced by architecture rather than discipline: the forge runs inside a Web Worker
 (`design-worker.js`), a context with no `document` at all, so a DOM reference there does not

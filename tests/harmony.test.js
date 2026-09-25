@@ -457,68 +457,68 @@ test("chordPeak: a wider voicing is measured, not assumed", async () => {
   for (const r of [closed, drop2]) assert.ok(r.peak > 0 && r.peak <= 4);
 });
 
-// ---------------------------------------------------------------- the drawn wheel
+// ---------------------------------------------------------------- the drawn honeycomb
 
-test("FIFTHS: the hit test agrees with the model, at the centre of every segment", async () => {
-  const { degreeAtPoint, RING_FRACTIONS } = await import("../dist/js/chord-wheel.js");
-  // SpaceAge probes 0.86 of the radius for the major ring and 0.58 for the minor one, which are
-  // the middles of the two rings. Same probes here.
-  const size = 560;
-  const centre = size / 2;
-  const radius = size / 2 - 2;
-  const probe = (position, fraction) => {
-    const radians = ((position * 30 - 90) * Math.PI) / 180;
-    return [centre + radius * fraction * Math.cos(radians), centre + radius * fraction * Math.sin(radians)];
-  };
-  for (let key = 0; key < 12; key++) {
-    for (let position = 0; position < 12; position++) {
-      const [mx, my] = probe(position, 0.86);
-      assert.equal(degreeAtPoint(key, mx, my, { size }), majorRingDegree(key, position), `key ${key} major ${position}`);
-      const [nx, ny] = probe(position, 0.58);
-      assert.equal(degreeAtPoint(key, nx, ny, { size }), minorRingDegree(key, position), `key ${key} minor ${position}`);
-    }
+test("the honeycomb draws one cell per degree, whatever the scale", async () => {
+  const { honeycombSvg } = await import("../dist/js/chord-honeycomb.js");
+  // This is the reason the circle of fifths was replaced. A circle of fifths only describes a
+  // major key: its two rings are the majors and their relative minors, and its seven lit chords
+  // are the seven of a major scale. A honeycomb has one cell per scale degree, so it says
+  // something true about all fifty scales rather than about one.
+  for (let mode = 0; mode < SCALES.length; mode++) {
+    const svg = honeycombSvg(0, mode);
+    const cells = [...svg.matchAll(/data-degree="(\d+)"/g)].map(([, d]) => +d);
+    assert.equal(cells.length, SCALES[mode].count, `${SCALES[mode].name} drew ${cells.length} cells`);
+    assert.deepEqual(cells, cells.map((_, i) => i), `${SCALES[mode].name} cells out of order`);
   }
-  // Outside the rings and inside the centre disc are both misses.
-  assert.ok(degreeAtPoint(0, 8, 8, { size }) < 0, "a corner is not a chord");
-  assert.ok(degreeAtPoint(0, centre, centre, { size }) < 0, "the hub is not a chord");
-  assert.ok(RING_FRACTIONS.minorOuter < RING_FRACTIONS.majorInner, "the rings do not overlap");
 });
 
-test("the drawn wheel carries the degree it was drawn with", async () => {
-  const { wheelSvg } = await import("../dist/js/chord-wheel.js");
-  // In JUCE the hit test and the paint could drift apart, which is why FIFTHS checks them
-  // against each other. Here the segment a person clicks is the shape that was drawn, so the
-  // check is that every drawn target names the degree the model gives it, and that nothing
-  // outside the key is a target at all.
+test("every honeycomb cell names the chord its degree actually builds", async () => {
+  const { honeycombSvg } = await import("../dist/js/chord-honeycomb.js");
   for (let key = 0; key < 12; key++) {
-    const svg = wheelSvg(key);
-    const targets = [...svg.matchAll(/data-degree="(\d)" data-position="(\d+)"/g)]
-      .map(([, degree, position]) => [+degree, +position]);
-    assert.equal(targets.length, 7, `key ${key} drew ${targets.length} chords`);
-    assert.deepEqual([...targets.map(([d]) => d)].sort(), [0, 1, 2, 3, 4, 5, 6], `key ${key} degrees`);
-    // A position can be lit on both rings at once - in C, position 0 is I on the outer ring and
-    // vi on the inner - so the drawn targets are compared as a set against both rings together.
-    const fromModel = [];
-    for (let position = 0; position < 12; position++) {
-      for (const ring of [majorRingDegree, minorRingDegree]) {
-        const degree = ring(key, position);
-        if (degree >= 0) fromModel.push(`${degree}@${position}`);
-      }
-    }
-    assert.deepEqual(targets.map(([d, p]) => `${d}@${p}`).sort(), fromModel.sort(), `key ${key} targets`);
-    for (const [degree] of targets) {
+    const svg = honeycombSvg(key, MODE_MAJOR);
+    for (let degree = 0; degree < 7; degree++) {
       assert.ok(svg.includes(chordName(key, degree)), `key ${key} did not print ${chordName(key, degree)}`);
     }
   }
+  // Key-correct spelling survives the move off the wheel, flats and all.
+  assert.ok(honeycombSvg(7, MODE_MAJOR).includes("D" + FLAT), "D flat major should print a flat");
+  assert.ok(honeycombSvg(6, MODE_MAJOR).includes("F" + SHARP), "F sharp major should print a sharp");
+  assert.ok(honeycombSvg(2, MODE_MAJOR).includes("C" + SHARP + DIMINISHED), "D major's vii is C sharp diminished");
+  // A scale with no key-correct letter spelling falls back to numerals, and still draws.
+  const dorian = honeycombSvg(0, scaleModeNamed("Dorian"));
+  assert.ok(dorian.includes("#vi" + DIMINISHED), "Dorian's sharpened sixth keeps its accidental");
 });
 
-test("the wheel prints the key's own spelling, flats and all", async () => {
-  const { wheelSvg } = await import("../dist/js/chord-wheel.js");
-  const inDflat = wheelSvg(7);
-  assert.ok(inDflat.includes("D" + FLAT), "D flat major should print a flat");
-  assert.ok(!inDflat.includes("C" + SHARP + "<"), "D flat major should not print C sharp as its tonic");
-  assert.ok(wheelSvg(6).includes("F" + SHARP), "F sharp major should print a sharp");
+test("the honeycomb tessellates: cells touch, and each one is its own hit target", async () => {
+  const { degreeAtPoint, cellBounds, honeycombSize } = await import("../dist/js/chord-honeycomb.js");
+  const width = 96;
+  const pad = 6;
+  // SpaceAge's geometry, from NumeralPadComponent: three quarters of a width across, odd columns
+  // dropped half a height. That stagger is what makes it a honeycomb rather than a row of
+  // separate tiles, so it is checked rather than assumed.
+  const a = cellBounds(0, { width, left: pad, top: pad });
+  const b = cellBounds(1, { width, left: pad, top: pad });
+  assert.ok(Math.abs(b.x - a.x - width * 0.75) < 1e-9, "columns step three quarters of a width");
+  assert.ok(Math.abs(b.y - a.y - a.h * 0.5) < 1e-9, "odd columns drop half a height");
+  assert.ok(b.x < a.x + a.w, "neighbouring cells overlap rather than leaving a gap");
+
+  // The centre of every cell lands on that cell, for every length of scale.
+  for (const mode of [1, 9, 11, 31]) {
+    const count = SCALES[mode].count;
+    for (let degree = 0; degree < count; degree++) {
+      const box = cellBounds(degree, { width, left: pad, top: pad });
+      const hit = degreeAtPoint(box.x + box.w / 2, box.y + box.h / 2, mode, { width, pad });
+      assert.equal(hit, degree, `${SCALES[mode].name} degree ${degree}`);
+    }
+    const size = honeycombSize(count, width);
+    assert.ok(size.width > 0 && size.height > 0);
+    // Well outside the honeycomb is a miss, not the nearest cell.
+    assert.equal(degreeAtPoint(-50, -50, mode, { width, pad }), -1);
+    assert.equal(degreeAtPoint(size.width + 200, size.height + 200, mode, { width, pad }), -1);
+  }
 });
+
 
 test("chordPeak reports the same number the live engine does", async () => {
   // The whole claim of the measurement is that a chord which clips here clips audibly in the

@@ -59,8 +59,8 @@ Everything that crossed from SpaceAge is in `dist/js/harmony.js`, which imports 
 | `chordMidiNotesForClip(ChordClip)` | `chordMidiNotes(chord, { keyRoot, mode }) => sorted number[]` |
 
 `CircleOfFifthsComponent` and `NumeralPadComponent` did **not** cross. The wheel was rebuilt as
-SVG in `dist/js/chord-wheel.js`, which also ports `degreeAtPoint` so their hit-test cases can
-still be run against something.
+SVG, and has since been replaced by a honeycomb - one hexagon per scale degree - in
+`dist/js/chord-honeycomb.js`. See section 8 below.
 
 ## 4. Test vectors — their section 6.4
 
@@ -204,10 +204,55 @@ the measurement exists to say, and nothing in OWL could say it before.
 | What | Where |
 | --- | --- |
 | The musical model | `dist/js/harmony.js` |
-| The wheel | `dist/js/chord-wheel.js` |
+| The honeycomb | `dist/js/chord-honeycomb.js` |
 | The progression on a pattern | `dist/js/pattern.js` |
 | The measurement | `chordPeak` in `dist/js/features.js` |
 | The wiring | the "chord lab" section of `dist/js/app.js` |
 | The test vectors | `tests/harmony.test.js` |
 | The contract, and what to check when SpaceAge changes | `docs/spaceage-integration.md` |
 | The data model | `docs/data-model.md` |
+
+## 8. The circle of fifths was replaced by a honeycomb
+
+Chord Lab shipped with a circle-of-fifths wheel, rebuilt as SVG from SpaceAge's
+`CircleOfFifthsComponent`. It has since been replaced outright by a honeycomb, for a reason that
+was not obvious until the wheel was working:
+
+**A circle of fifths can only describe a major key.** Its two rings are the twelve majors and
+their relative minors, and the seven chords it lights are the seven of a major scale. Ask it for
+Dorian, or Phrygian Dominant, or a pentatonic — all of which OWL's chord model supports, because
+SpaceAge's fifty scales came across whole — and it has nothing to say. OWL was printing roman
+numerals onto a diagram still drawn as though the key were major.
+
+A honeycomb is one hexagon per scale degree. It has exactly as many cells as the scale has notes:
+seven for the modes, five for a pentatonic, six for whole tone, eight for the diminished scales.
+Every cell is a chord that can actually be played in the chosen scale, and none of them are
+decoration.
+
+The geometry is SpaceAge's own, from `NumeralPadComponent` in `Source/SpaceageCircleOfFifths.h`:
+flat-topped hexagons, each column three quarters of a width across, odd columns dropped half a
+height. That stagger is what makes it tessellate rather than read as a row of separate tiles.
+SpaceAge uses the pad for minor keys and the wheel for major ones (`majorUsesTheWheel`,
+`minorUsesThePad` in `FIFTHS_HANDOVER`); OWL now uses the honeycomb for everything.
+
+**None of the musical model changed.** `harmony.js` is untouched by this: the honeycomb is a
+different projection of the same degrees, qualities and spellings, and every test that pinned the
+model still passes. Only the drawing was replaced.
+
+### What was lost, and what it would take to get back
+
+The wheel drew the five chords *outside* the key as unlit context, which made borrowed chords
+visible even though it could not insert them. The honeycomb has no cells for them, because it is
+indexed by scale degree and a borrowed chord is not one.
+
+The model already carries what borrowing needs — `rootOffsetSemitones`, which SpaceAge exposes as
+its "BORROW" family — and it is sanitised and tested here. It is simply not on the surface. A row
+of borrowed cells under the honeycomb, or a modifier on a cell, would restore it.
+
+### The obvious next step
+
+SpaceAge carries per-hexagon controls on the shape itself: the body adds the chord, the four
+edges set the inversion, and two discs set the octave (`edgeSetsInversion`, `discRaisesOctave`,
+`discLowersOctave`, `bodyStillAdds`). OWL keeps those on a separate panel beside the honeycomb.
+Folding them onto the cells would make the two products feel like one, and a hexagon is the right
+shape for it — six edges is six affordances that a circle segment does not have.

@@ -82,7 +82,9 @@ the index, not the name. Inserting a scale in the middle on either side silently
 every stored chord means.
 
 `CircleOfFifthsComponent` and `NumeralPadComponent` were not ported. They are JUCE views; the
-wheel was rebuilt as SVG in `dist/js/chord-wheel.js`.
+wheel was first rebuilt as SVG and then replaced by a honeycomb, `dist/js/chord-honeycomb.js`:
+one hexagon per scale degree, using NumeralPadComponent's stagger. A circle of fifths can only
+describe a major key; a honeycomb has one cell per degree, so it works for all fifty scales.
 
 ### How the two are kept honest
 

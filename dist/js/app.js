@@ -7,7 +7,7 @@ import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./alg
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
 import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot, placeChord } from "./pattern.js";
-import { wheelSvg } from "./chord-wheel.js";
+import { honeycombSvg, honeycombSize } from "./chord-honeycomb.js";
 import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral } from "./harmony.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
 import { dbToGain, sanitizeVolume, volumeText, DEFAULT_DB } from "./monitor.js";
@@ -906,7 +906,7 @@ addEventListener("keydown", (e) => {
 
 // ---------------------------------------------------------------- chord lab
 // Picking chords from a circle of fifths and hearing a patch through them. The musical model is
-// harmony.js, ported from SpaceAge; the wheel is chord-wheel.js. This is only the wiring: which
+// harmony.js, ported from SpaceAge; the honeycomb is chord-honeycomb.js. This is only the wiring: which
 // chord is selected, and what each control does to it.
 //
 // The point of this in a patch designer, as against a sequencer, is the measurement at the end:
@@ -937,12 +937,33 @@ function drawChordLabControls() {
     .join("");
 }
 
+/**
+ * Draw the honeycomb, sized to the scale.
+ *
+ * The cell count changes with the scale - five for a pentatonic, eight for a diminished - so the
+ * viewBox is computed from it rather than fixed. The SVG then scales to whatever width the panel
+ * has, which is what keeps the cells big enough to hit on a narrow screen.
+ */
+function drawHoneycomb(h) {
+  const CELL = 96;
+  const PAD = 6;
+  const count = Math.max(1, SCALES[h.mode].count);
+  const { width, height } = honeycombSize(count, CELL);
+  const svg = $("#clHoneycomb");
+  svg.setAttribute("viewBox", `0 0 ${(width + PAD * 2).toFixed(1)} ${(height + PAD * 2).toFixed(1)}`);
+  svg.innerHTML = honeycombSvg(h.keyPosition, h.mode, {
+    width: CELL,
+    pad: PAD,
+    selected: lab.selected == null ? null : h.chords[lab.selected]?.degree,
+  });
+}
+
 function drawChordLab() {
   const h = harmonyOf();
   $("#clKey").value = String(h.keyPosition);
   $("#clMode").value = String(h.mode);
   $("#clKeySig").textContent = h.mode === MODE_MAJOR ? keySignature(h.keyPosition) : SCALES[h.mode].name;
-  $("#clWheel").innerHTML = wheelSvg(h.keyPosition, { size: 360, selected: lab.selected == null ? null : h.chords[lab.selected]?.degree });
+  drawHoneycomb(h);
 
   $("#clProgression").innerHTML = h.chords.length
     ? h.chords
@@ -953,7 +974,7 @@ function drawChordLab() {
           </span>`,
         )
         .join("")
-    : `<p class="chl-empty">No chords yet. Click one on the wheel.</p>`;
+    : `<p class="chl-empty">No chords yet. Click a hexagon above.</p>`;
   $("#clProgNote").textContent = h.chords.length ? `${h.chords.length} of ${MAX_CHORDS}` : "—";
 
   const chord = lab.selected == null ? null : h.chords[lab.selected];
@@ -969,19 +990,19 @@ function drawChordLab() {
   drawChordLane();
 }
 
-// ---- the wheel: a click adds that degree to the progression and plays it
-$("#clWheel").addEventListener("click", (e) => addFromWheel(e.target.closest("[data-degree]")));
+// ---- the honeycomb: a click adds that degree to the progression and plays it
+$("#clHoneycomb").addEventListener("click", (e) => addFromHoneycomb(e.target.closest("[data-degree]")));
 // The segments are SVG groups with a button role, so Enter and Space are not free.
-$("#clWheel").addEventListener("keydown", (e) => {
+$("#clHoneycomb").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " ") return;
   const seg = e.target.closest?.("[data-degree]");
   if (!seg) return;
   e.preventDefault();
   e.stopPropagation(); // Space is also the transport; on a chord it means this chord.
-  addFromWheel(seg);
+  addFromHoneycomb(seg);
 });
 
-function addFromWheel(seg) {
+function addFromHoneycomb(seg) {
   if (!seg) return;
   const degree = +seg.dataset.degree;
   const h = harmonyOf();
@@ -990,8 +1011,8 @@ function addFromWheel(seg) {
     return;
   }
   // A chord goes into the progression *and* onto a step. A chord that is only in the list cannot
-  // be heard, which makes the wheel look broken: you click four chords, press play, and the loop
-  // plays whatever it played before.
+  // be heard, which makes the honeycomb look broken: you click four chords, press play, and the
+  // loop plays whatever it played before.
   const index = h.chords.length;
   loop.pattern.harmony.chords = [...h.chords, { ...defaultChord(), degree }];
   const placed = placeChord(loop.pattern, index);
