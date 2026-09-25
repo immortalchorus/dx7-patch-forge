@@ -58,3 +58,50 @@ at all, so the export story would be: two DX7 voices plus a SpaceAge patch that 
   statements. SpaceAge has its own, stricter rule: `README.md` is hash-bound in
   `Resources/PublicClaimsRegistry.json` and enforced by a test.
 - Public copy uses curly quotes and apostrophes, and the Oxford comma.
+
+## The chord engine, ported into OWL
+
+`dist/js/harmony.js` is a port of SpaceAge's chord engine, added so OWL can audition a patch
+under a progression and measure what it does there. Unlike the `.ssynth` contract above, this is
+not a file format both sides must agree on: it is **two implementations of the same arithmetic**,
+and the risk is that they drift apart without either one erroring.
+
+What was ported, and from where:
+
+| What | SpaceAge | OWL |
+| --- | --- | --- |
+| The wheel: pitch classes, positions, key-correct spelling, ring degrees | `Source/SpaceageCircleOfFifths.h`, `WheelModel` | `harmony.js`, same function names |
+| 43 chord qualities | `PluginEditor.cpp`, `chordFormulas()` | `QUALITIES`, same order |
+| 50 scales | `PluginEditor.cpp`, `scaleDefinitions()` | `SCALES`, same order |
+| Roman numerals derived from the stacked triad | `PluginEditor.cpp`, `romanNumeralForScaleDegree()` | `romanNumeralForScaleDegree()` |
+| Drop voicings | `PluginProcessor.cpp`, `applyChordVoicing()` | `applyChordVoicing()`, ported line for line |
+| Degree to MIDI notes | `PluginEditor.cpp`, `chordMidiNotesForClip()` | `chordMidiNotes()` |
+
+The **order of `QUALITIES` and `SCALES` is a contract**, not a preference: a saved chord carries
+the index, not the name. Inserting a scale in the middle on either side silently changes what
+every stored chord means.
+
+`CircleOfFifthsComponent` and `NumeralPadComponent` were not ported. They are JUCE views; the
+wheel was rebuilt as SVG in `dist/js/chord-wheel.js`.
+
+### How the two are kept honest
+
+SpaceAge pins its chord engine with three gates — `FIFTHS`, `CHORD_ROMAN` and `FIFTHS_HANDOVER`.
+Those need a SpaceAge build, so OWL does not run them. Instead `tests/harmony.test.js` expresses
+**the cases those gates assert, as data**: the twelve keys and their spellings, the named
+progressions (`C G Am F`, `G D Em C`, `E♭ A♭ B♭ D°`), the nine-scale numeral table from
+`CHORD_ROMAN`, and the hit-test probes at 0.86 and 0.58 of the radius.
+
+That table is meant to be **handed back to the SpaceAge side and asserted against the gates
+there**. If the two ever disagree, SpaceAge is right and OWL is wrong: the gates predate the port.
+
+### What to check when SpaceAge's chord engine changes
+
+1. **A scale or quality added, removed or reordered** — the index is what is stored.
+2. **`applyChordVoicing`** — the ranks it drops, and the minimum note it floors to (OWL passes 24,
+   as `chordMidiNotesForClip` does).
+3. **The 24–96 clamp and the `48 + root` base** in `chordMidiNotesForClip`; both decide the octave
+   a chord lands in.
+4. **The spelling tables** in `WheelModel`. F♯ major must keep its F♯ and D♭ major its D♭.
+5. **The numeral rules** — in particular that a minor-tonic scale is read against the parallel
+   natural minor rather than the parallel major, which is what keeps Natural Minor free of flats.

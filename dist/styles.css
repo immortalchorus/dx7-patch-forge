@@ -393,3 +393,79 @@ footer { height: 54px; border-top: 1px solid var(--line); display: flex; align-i
   .lane-label { font-size: 0; }
   .loop-controls { gap: 8px; }
 }
+
+/* Chord Lab: the circle of fifths, the progression, and what a patch measures under it.
+   The wheel borrows the algorithm chart's language - thin strokes, mono labels, carriers in
+   orange and everything secondary in the label blue - so the two diagrams read as one product. */
+.lane-chord .cstep { border: 1px solid var(--line-soft); background: var(--charcoal-2); border-radius: 3px; padding: 5px 2px;
+  cursor: pointer; font: 9px var(--mono); color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lane-chord .cstep:hover { border-color: var(--blue); }
+.lane-chord .cstep.on { border-color: var(--orange); background: #241a12; color: var(--orange-text); }
+.lane-chord .cstep.sel { border-color: var(--blue); }
+
+.chordlab { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.chl-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.chl-title { font: 11px var(--mono); letter-spacing: .14em; color: var(--orange-text); }
+.chl-head label { display: flex; align-items: center; gap: 6px; font: 11px var(--mono); color: var(--label); letter-spacing: .06em; }
+.chl-head small { font: 10px var(--mono); color: var(--muted); letter-spacing: .06em; }
+.chl-body { display: grid; grid-template-columns: 360px minmax(220px, 1fr); gap: 20px; align-items: start; }
+#clWheel { width: 360px; height: 360px; }
+.chl-side { display: flex; flex-direction: column; gap: 14px; }
+.chl-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: 10px var(--mono); letter-spacing: .12em; color: var(--label); margin-bottom: 8px; }
+.chl-block-head small { color: var(--muted); letter-spacing: .06em; }
+
+/* The wheel */
+.wseg path { fill: #1a1a1e; stroke: var(--line-soft); stroke-width: 1; }
+.wseg text { font: 11px var(--mono); fill: var(--muted); pointer-events: none; }
+.wseg .wnum { font-size: 8px; fill: var(--line); letter-spacing: .05em; }
+.wseg.lit { cursor: pointer; }
+.wseg.lit path { fill: var(--charcoal-2); stroke: var(--line); }
+.wseg.lit text { fill: var(--text); }
+.wseg.lit .wnum { fill: var(--label); }
+.wseg.lit.minor path { fill: #1b1b1f; }
+.wseg.lit:hover path { stroke: var(--blue); stroke-width: 1.75; }
+.wseg.lit.sel path { stroke: var(--orange); stroke-width: 1.75; fill: #241a12; }
+.wseg.lit.sel text { fill: var(--orange-text); }
+.wseg.lit:focus-visible { outline: none; }
+.wseg.lit:focus-visible path { stroke: var(--blue); stroke-width: 2.5; }
+.whub { fill: var(--black); stroke: var(--line); }
+.wkey { font: 20px var(--mono); fill: var(--orange-text); }
+.wsig { font: 9px var(--mono); fill: var(--muted); letter-spacing: .12em; }
+
+/* The progression */
+.chl-prog { display: flex; flex-wrap: wrap; gap: 6px; }
+.chl-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--charcoal-2); }
+.chl-chip.sel { border-color: var(--orange); }
+.chl-pick { border: 0; background: transparent; color: var(--text); font: 12px var(--mono); padding: 6px 8px; cursor: pointer; display: flex; align-items: baseline; gap: 6px; }
+.chl-pick em { font-style: normal; font-size: 9px; color: var(--muted); }
+.chl-chip.sel .chl-pick { color: var(--orange-text); }
+.chl-drop { border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; padding: 0 7px; font-size: 13px; }
+.chl-drop:hover { color: var(--warn); background: #2a1b18; }
+.chl-empty { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* The selected chord */
+.chl-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.chl-editor label { display: flex; flex-direction: column; gap: 4px; font: 9px var(--mono); letter-spacing: .1em; color: var(--muted); }
+.chl-editor select { width: 100%; }
+.chl-notes { margin: 8px 0 0; font: 11px var(--mono); color: var(--label); letter-spacing: .08em; }
+
+/* The measurement */
+.chl-block-head button { border: 1px solid var(--line); background: var(--charcoal-2); color: var(--text);
+  border-radius: var(--radius); padding: 5px 10px; font: 10px var(--ui); cursor: pointer; letter-spacing: normal; }
+.chl-block-head button:hover:not(:disabled) { border-color: var(--blue); }
+.chl-block-head button:disabled { color: var(--muted); cursor: default; }
+.chl-measure { width: 100%; border-collapse: collapse; font: 11px var(--mono); }
+.chl-measure:empty { display: none; }
+.chl-measure th { text-align: left; font-weight: 400; color: var(--muted); font-size: 9px; letter-spacing: .1em; padding: 0 0 4px; }
+.chl-measure td { padding: 3px 0; border-top: 1px solid var(--line-soft); color: var(--text); }
+.chl-measure .chl-num { text-align: right; color: var(--label); }
+.chl-measure tr.clips td { color: var(--warn); }
+.chl-measure tr.clips .chl-num { color: var(--warn); }
+.chl-hint { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
+#chordLabToggle.on { border-color: var(--orange); color: var(--orange-text); }
+
+@media (max-width: 1100px) {
+  .chl-body { grid-template-columns: 1fr; }
+  #clWheel { width: 100%; height: auto; max-width: 360px; }
+}

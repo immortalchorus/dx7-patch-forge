@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultPattern, sanitizePattern, stepEvents, stepSeconds, presetById, PRESETS, STEPS } from "../dist/js/pattern.js";
+import { defaultPattern, sanitizePattern, stepEvents, stepSeconds, presetById, PRESETS, STEPS, stepChordNotes, MAX_CHORDS } from "../dist/js/pattern.js";
+import { defaultChord } from "../dist/js/harmony.js";
 import { PreviewEngine } from "../dist/js/preview-engine.js";
 import { LIBRARY } from "../dist/js/designer.js";
 
@@ -26,13 +27,13 @@ function run(engine, seconds, sampleRate = 48000) {
 }
 
 test("a pattern is forced into shape whatever it was loaded from", () => {
-  const p = sanitizePattern({ bpm: 9000, division: "nonsense", chord: "nope", gate: 5, steps: [{ note: 300, vel: -4, tie: 1 }] });
+  const p = sanitizePattern({ bpm: 9000, division: "nonsense", gate: 5, steps: [{ note: 300, vel: -4, tie: 1 }] });
   assert.equal(p.bpm, 240);
   assert.equal(p.division, "1/8");
-  assert.equal(p.chord, "off");
+  assert.deepEqual(p.harmony, { keyPosition: 0, mode: 1, chords: [] });
   assert.equal(p.gate, 1);
   assert.equal(p.steps.length, STEPS);
-  assert.deepEqual(p.steps[0], { note: 127, vel: 1, tie: true });
+  assert.deepEqual(p.steps[0], { note: 127, vel: 1, tie: true, chord: null });
   assert.equal(p.steps[5].note, null, "missing steps become rests");
 });
 
@@ -43,18 +44,61 @@ test("tied rests extend the note before them instead of retriggering", () => {
   assert.equal(stepEvents(tail, 6), null, "an untied rest is silence");
 });
 
-test("chords add intervals to every step", () => {
-  const p = sanitizePattern({ ...defaultPattern(), chord: "maj7" });
-  assert.deepEqual(stepEvents(p, 0).notes, [60, 64, 67, 71]);
+test("a step with a chord plays the progression instead of its own note", () => {
+  // C major, the scale-relative triad on I: the chord's notes are absolute, so the note written
+  // on the step is not heard as well. One step, one thing to listen to.
+  const p = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
+    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: 0 } : s)),
+  });
+  assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55]);
+  assert.deepEqual(stepChordNotes(p, 0), [48, 52, 55]);
+  // A step with no chord still plays its own note, as it always did.
+  assert.equal(stepChordNotes(p, 1), null);
+  assert.deepEqual(stepEvents(p, 1).notes, [p.steps[1].note]);
+});
+
+test("a chord index that names no chord is dropped, not left dangling", () => {
+  // Deleting a chord must not leave steps pointing at a hole that would throw when played.
+  const p = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
+    steps: defaultPattern().steps.map((s, i) => ({ ...s, chord: i })),
+  });
+  assert.equal(p.steps[0].chord, 0);
+  for (let i = 1; i < STEPS; i++) assert.equal(p.steps[i].chord, null, `step ${i}`);
+  // A progression is capped, and anything past the cap is discarded rather than kept unplayable.
+  const many = sanitizePattern({ ...defaultPattern(), harmony: { chords: Array.from({ length: 40 }, defaultChord) } });
+  assert.equal(many.harmony.chords.length, MAX_CHORDS);
+});
+
+test("a chord is held through the tied rests after it, like a note", () => {
+  const p = sanitizePattern(presetById("chord").make());
+  const ev = stepEvents(p, 0);
+  assert.equal(ev.notes.length, 4, "a major seventh is four notes");
+  assert.equal(ev.steps, 8, "held through its seven tied rests");
+  assert.equal(stepEvents(p, 1), null);
 });
 
 test("every preset is playable and says what it is for", () => {
   for (const preset of PRESETS) {
     const p = sanitizePattern(preset.make());
-    assert.ok(p.steps.some((s) => s.note != null), `${preset.id} has notes`);
+    const sounds = p.steps.some((s, i) => stepEvents(p, i) != null);
+    assert.ok(sounds, `${preset.id} sounds something`);
     assert.ok(preset.hint.length > 20, `${preset.id} has a hint`);
     assert.ok(stepSeconds(p) > 0.02 && stepSeconds(p) < 3, `${preset.id} step length`);
   }
+});
+
+test("the progression preset walks its four chords in the key it names", () => {
+  const p = sanitizePattern(presetById("progression").make());
+  assert.equal(p.harmony.chords.length, 4);
+  // I V vi IV in C, as scale-relative sevenths: CMaj7, G7, Am7, FMaj7.
+  assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55, 59]);
+  assert.deepEqual(stepEvents(p, 4).notes, [55, 59, 62, 65]);
+  assert.deepEqual(stepEvents(p, 8).notes, [57, 60, 64, 67]);
+  assert.deepEqual(stepEvents(p, 12).notes, [53, 57, 60, 64]);
 });
 
 test("the engine plays the loop in time, and stopping it lets the notes go", () => {
@@ -110,4 +154,29 @@ test("the octave control moves the whole pattern, or refuses to", async () => {
   assert.equal(shiftPattern(p, 96), null, "a shift that would run off the keyboard is refused");
   const withRest = sanitizePattern({ ...p, steps: p.steps.map((s, i) => (i ? s : { ...s, note: null })) });
   assert.equal(shiftPattern(withRest, 12).steps[0].note, null, "rests stay rests");
+});
+
+test("a progression moves by whole octaves, and refuses anything else", async () => {
+  const { shiftPattern } = await import("../dist/js/pattern.js");
+  const withChords = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
+    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: 0 } : s)),
+  });
+  // An octave up moves the chord's register, which is the field that means exactly this.
+  const up = shiftPattern(withChords, 12);
+  assert.equal(up.harmony.chords[0].registerOctaves, 1);
+  assert.deepEqual(stepChordNotes(sanitizePattern(up), 0), [60, 64, 67]);
+  const down = shiftPattern(withChords, -12);
+  assert.equal(down.harmony.chords[0].registerOctaves, -1);
+  // Anything that is not a whole octave is refused rather than silently rewriting the degrees
+  // or changing the key behind the user's back.
+  assert.equal(shiftPattern(withChords, 7), null, "a fifth is not an octave");
+  assert.equal(shiftPattern(withChords, 1), null, "nor is a semitone");
+  // SpaceAge clamps registerOctaves to three either way, so a fourth octave is refused.
+  const high = sanitizePattern({ ...withChords, harmony: { ...withChords.harmony, chords: [{ ...defaultChord(), registerOctaves: 3 }] } });
+  assert.equal(shiftPattern(high, 12), null, "past three octaves is refused, not clamped");
+  assert.ok(shiftPattern(high, -12), "and it can still come back down");
+  // With no progression, a pattern still moves by any interval, as it always did.
+  assert.ok(shiftPattern(sanitizePattern(defaultPattern()), 7), "a plain pattern still moves by a fifth");
 });

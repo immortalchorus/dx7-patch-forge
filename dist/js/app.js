@@ -6,7 +6,9 @@ import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
-import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, CHORDS, presetById } from "./pattern.js";
+import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot } from "./pattern.js";
+import { wheelSvg } from "./chord-wheel.js";
+import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral } from "./harmony.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
 import { dbToGain, sanitizeVolume, volumeText, DEFAULT_DB } from "./monitor.js";
 import { noteName } from "./dx7-params.js";
@@ -475,9 +477,10 @@ function ensureAudio() {
   audioSetup.catch(() => (audioSetup = null));
   return audioSetup;
 }
+// In the classic editor what you hear also reflects muted operators and compare.
+const currentVoice = () => (state.manual ? classic.previewVoice : current()?.voice);
 function sendVoice() {
-  // In the classic editor what you hear also reflects muted operators and compare.
-  const voice = state.manual ? classic.previewVoice : current()?.voice;
+  const voice = currentVoice();
   if (audio && voice) audio.send({ type: "voice", voice });
 }
 async function noteOn(note, velocity) {
@@ -541,7 +544,11 @@ function shiftOctave(delta) {
   if (next === octave) return;
   const moved = shiftPattern(loop.pattern, delta * 12);
   if (!moved) {
-    $("#loopHint").textContent = "The pattern cannot move any further without running off the keyboard.";
+    // A progression can also be what refuses: its chords move by whole octaves and SpaceAge
+    // clamps that to three either way, so say which of the two is in the way.
+    $("#loopHint").textContent = loop.pattern.harmony.chords.length
+      ? "The loop cannot move any further: a note or a chord would run off the keyboard."
+      : "The pattern cannot move any further without running off the keyboard.";
     return;
   }
   octave = next;
@@ -553,6 +560,7 @@ function shiftOctave(delta) {
   loop.pattern = sanitizePattern(moved);
   buildKeyboard();
   pushPattern();
+  drawChordLab();
   drawRoll();
 }
 $("#octDown").onclick = () => shiftOctave(-1);
@@ -721,7 +729,6 @@ function drawLoopControls() {
   const p = loop.pattern;
   $("#loopPreset").innerHTML = `<option value="">Custom</option>` + PRESETS.map((x) => `<option value="${x.id}">${esc(x.label)}</option>`).join("");
   $("#loopDivision").innerHTML = DIVISIONS.map((d) => `<option value="${d.id}" ${d.id === p.division ? "selected" : ""}>${esc(d.label)}</option>`).join("");
-  $("#loopChord").innerHTML = CHORDS.map((c) => `<option value="${c.id}" ${c.id === p.chord ? "selected" : ""}>${esc(c.label)}</option>`).join("");
   $("#loopBpm").value = p.bpm;
   $("#loopGate").value = Math.round(p.gate * 100);
   $("#loopGateOut").value = `${Math.round(p.gate * 100)}%`;
@@ -768,6 +775,32 @@ function drawRoll() {
     `<i class="lane-label">HOLD</i>` +
     p.steps
       .map((s, i) => `<button class="tie${s.tie ? " on" : ""}" data-i="${i}" aria-pressed="${s.tie}" title="Hold the note before it through step ${i + 1}"></button>`)
+      .join("");
+  drawChordLane();
+}
+
+/**
+ * The chord row: which chord of the progression each step plays, if any. It sits with HOLD and
+ * VEL because it is the same kind of thing - one more property of a step - and because a chord
+ * has to be read against the notes above it to make sense.
+ */
+function drawChordLane() {
+  const p = loop.pattern;
+  const chords = p.harmony.chords;
+  $(".lane-chord").hidden = !chords.length;
+  if (!chords.length) return;
+  $("#chordLane").innerHTML =
+    `<i class="lane-label">CHORD</i>` +
+    p.steps
+      .map((s, i) => {
+        const on = s.chord != null;
+        const label = on ? chordLabel(chords[s.chord], { keyPosition: p.harmony.keyPosition, mode: p.harmony.mode }) : "";
+        const title = on
+          ? `Step ${i + 1} plays ${label}. Click for the next chord.`
+          : `Step ${i + 1} plays its own note. Click to put a chord on it.`;
+        return `<button class="cstep${on ? " on" : ""}${on && s.chord === lab.selected ? " sel" : ""}" data-i="${i}"
+          title="${esc(title)}" aria-label="${esc(title)}">${esc(label)}</button>`;
+      })
       .join("");
 }
 
@@ -824,15 +857,16 @@ $("#loopPreset").onchange = (e) => {
   // Presets are written around middle C; bring them to whatever octave is on screen.
   const written = preset.make();
   loop.pattern = sanitizePattern(shiftPattern(written, (octave - 4) * 12) || written);
+  lab.selected = null;
   $("#loopHint").textContent = preset.hint;
   pushPattern();
   drawLoopControls();
   $("#loopPreset").value = preset.id;
+  drawChordLab();
   drawRoll();
 };
 $("#loopBpm").oninput = (e) => editPattern((p) => (p.bpm = +e.target.value || p.bpm));
 $("#loopDivision").onchange = (e) => editPattern((p) => (p.division = e.target.value));
-$("#loopChord").onchange = (e) => editPattern((p) => (p.chord = e.target.value));
 $("#loopGate").oninput = (e) => {
   $("#loopGateOut").value = `${e.target.value}%`;
   editPattern((p) => (p.gate = +e.target.value / 100));
@@ -869,6 +903,211 @@ addEventListener("keydown", (e) => {
   e.preventDefault();
   setLoopPlaying(!loop.playing);
 });
+
+// ---------------------------------------------------------------- chord lab
+// Picking chords from a circle of fifths and hearing a patch through them. The musical model is
+// harmony.js, ported from SpaceAge; the wheel is chord-wheel.js. This is only the wiring: which
+// chord is selected, and what each control does to it.
+//
+// The point of this in a patch designer, as against a sequencer, is the measurement at the end:
+// four stacked carriers clip where one does not, and until now nothing in OWL could say so.
+const lab = { selected: null, measuring: false };
+
+const harmonyOf = () => loop.pattern.harmony;
+const labelFor = (chord) => chordLabel(chord, { keyPosition: harmonyOf().keyPosition, mode: harmonyOf().mode });
+const notesOf = (chord) => chordMidiNotes(chord, { keyRoot: harmonyKeyRoot(harmonyOf()), mode: harmonyOf().mode });
+
+function editHarmony(change) {
+  change(loop.pattern.harmony);
+  loop.pattern = sanitizePattern(loop.pattern);
+  if (lab.selected != null && lab.selected >= loop.pattern.harmony.chords.length) lab.selected = null;
+  pushPattern();
+  drawChordLab();
+  drawRoll();
+}
+
+function drawChordLabControls() {
+  $("#clKey").innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i}">${esc(majorName(i))} major</option>`).join("");
+  $("#clMode").innerHTML = SCALES.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("#clQuality").innerHTML = QUALITIES.map((q, i) => `<option value="${i}">${esc(q.name)}</option>`).join("");
+  $("#clVoicing").innerHTML = VOICINGS.map((v) => `<option value="${v.id}" title="${esc(v.hint)}">${esc(v.label)}</option>`).join("");
+  $("#clInversion").innerHTML = ["Root position", "1st", "2nd", "3rd"].map((t, i) => `<option value="${i}">${esc(t)}</option>`).join("");
+  $("#clRegister").innerHTML = [-3, -2, -1, 0, 1, 2, 3]
+    .map((o) => `<option value="${o}">${o === 0 ? "As written" : `${o > 0 ? "+" : ""}${o} oct`}</option>`)
+    .join("");
+}
+
+function drawChordLab() {
+  const h = harmonyOf();
+  $("#clKey").value = String(h.keyPosition);
+  $("#clMode").value = String(h.mode);
+  $("#clKeySig").textContent = h.mode === MODE_MAJOR ? keySignature(h.keyPosition) : SCALES[h.mode].name;
+  $("#clWheel").innerHTML = wheelSvg(h.keyPosition, { size: 360, selected: lab.selected == null ? null : h.chords[lab.selected]?.degree });
+
+  $("#clProgression").innerHTML = h.chords.length
+    ? h.chords
+        .map(
+          (c, i) => `<span class="chl-chip${i === lab.selected ? " sel" : ""}">
+            <button class="chl-pick" data-i="${i}" title="Edit and hear ${esc(labelFor(c))}">${esc(labelFor(c))}<em>${esc(degreeNumeral(c.degree))}</em></button>
+            <button class="chl-drop" data-drop="${i}" aria-label="Remove ${esc(labelFor(c))}" title="Remove ${esc(labelFor(c))}">&times;</button>
+          </span>`,
+        )
+        .join("")
+    : `<p class="chl-empty">No chords yet. Click one on the wheel.</p>`;
+  $("#clProgNote").textContent = h.chords.length ? `${h.chords.length} of ${MAX_CHORDS}` : "—";
+
+  const chord = lab.selected == null ? null : h.chords[lab.selected];
+  $("#clEditorBlock").hidden = !chord;
+  if (chord) {
+    $("#clChordName").textContent = labelFor(chord);
+    $("#clQuality").value = String(chord.quality);
+    $("#clVoicing").value = String(chord.voicing);
+    $("#clInversion").value = String(chord.inversion);
+    $("#clRegister").value = String(chord.registerOctaves);
+    $("#clNotes").textContent = `${notesOf(chord).map(noteName).join("  ")}`;
+  }
+  drawChordLane();
+}
+
+// ---- the wheel: a click adds that degree to the progression and plays it
+$("#clWheel").addEventListener("click", (e) => addFromWheel(e.target.closest("[data-degree]")));
+// The segments are SVG groups with a button role, so Enter and Space are not free.
+$("#clWheel").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const seg = e.target.closest?.("[data-degree]");
+  if (!seg) return;
+  e.preventDefault();
+  e.stopPropagation(); // Space is also the transport; on a chord it means this chord.
+  addFromWheel(seg);
+});
+
+function addFromWheel(seg) {
+  if (!seg) return;
+  const degree = +seg.dataset.degree;
+  const h = harmonyOf();
+  if (h.chords.length >= MAX_CHORDS) {
+    $("#clProgNote").textContent = `full at ${MAX_CHORDS}`;
+    return;
+  }
+  editHarmony((harmony) => {
+    harmony.chords = [...harmony.chords, { ...defaultChord(), degree }];
+    lab.selected = harmony.chords.length - 1;
+  });
+  auditionSelected();
+}
+
+$("#clProgression").addEventListener("click", (e) => {
+  const drop = e.target.closest("[data-drop]");
+  if (drop) {
+    const at = +drop.dataset.drop;
+    // Removing a chord renumbers the ones after it, so the steps that pointed at them have to
+    // follow. Leaving them to the sanitiser would silently clear every step past the deleted one.
+    editHarmony((harmony) => {
+      harmony.chords = harmony.chords.filter((_, i) => i !== at);
+      for (const s of loop.pattern.steps) {
+        if (s.chord == null) continue;
+        if (s.chord === at) s.chord = null;
+        else if (s.chord > at) s.chord -= 1;
+      }
+      lab.selected = null;
+    });
+    return;
+  }
+  const pick = e.target.closest("[data-i]");
+  if (!pick) return;
+  lab.selected = +pick.dataset.i;
+  drawChordLab();
+  auditionSelected();
+});
+
+const editSelected = (change) => {
+  if (lab.selected == null) return;
+  editHarmony((harmony) => change(harmony.chords[lab.selected]));
+  auditionSelected();
+};
+$("#clQuality").onchange = (e) => editSelected((c) => (c.quality = +e.target.value));
+$("#clVoicing").onchange = (e) => editSelected((c) => (c.voicing = +e.target.value));
+$("#clInversion").onchange = (e) => editSelected((c) => (c.inversion = +e.target.value));
+$("#clRegister").onchange = (e) => editSelected((c) => (c.registerOctaves = +e.target.value));
+$("#clKey").onchange = (e) => editHarmony((h) => (h.keyPosition = +e.target.value));
+$("#clMode").onchange = (e) => editHarmony((h) => (h.mode = +e.target.value));
+
+/** Play the selected chord once, so an edit is heard as it is made. */
+async function auditionSelected() {
+  const h = harmonyOf();
+  const chord = lab.selected == null ? null : h.chords[lab.selected];
+  if (!chord || loop.playing) return;
+  const notes = notesOf(chord);
+  try {
+    await ensureAudio();
+    for (const n of notes) noteOn(n, +$("#velocity").value);
+    setTimeout(() => notes.forEach(noteOff), 900);
+  } catch {
+    // Audio unavailable; the chord is still written down and will play when the loop runs.
+  }
+}
+
+// ---- the chord row: click a step to move it through the progression and back to none
+$("#chordLane").addEventListener("click", (e) => {
+  const b = e.target.closest(".cstep");
+  if (!b) return;
+  const i = +b.dataset.i;
+  const count = harmonyOf().chords.length;
+  if (!count) return;
+  editPattern((p) => {
+    const at = p.steps[i].chord;
+    p.steps[i].chord = at == null ? 0 : at + 1 >= count ? null : at + 1;
+  });
+});
+
+// ---- the measurement, which is the reason this is in a patch designer at all
+$("#clMeasure").onclick = () => measureProgression();
+
+function measureProgression() {
+  const voice = currentVoice();
+  const h = harmonyOf();
+  if (!voice || !h.chords.length || lab.measuring) return;
+  lab.measuring = true;
+  $("#clMeasure").disabled = true;
+  $("#clMeasure").textContent = "Measuring…";
+  // Rendering four to six notes per chord takes a moment; yield first so the button repaints.
+  setTimeout(async () => {
+    try {
+      const { chordPeak } = await import("./features.js");
+      const rows = h.chords.map((c) => ({ label: labelFor(c), notes: notesOf(c), ...chordPeak(voice, notesOf(c)) }));
+      const single = chordPeak(voice, [60]);
+      $("#clMeasureTable").innerHTML =
+        `<tr><th>Chord</th><th>Notes</th><th>Peak</th><th>Stacking</th></tr>` +
+        rows
+          .map(
+            (r) => `<tr class="${r.clips ? "clips" : ""}">
+              <td>${esc(r.label)}</td>
+              <td class="chl-num">${r.notes.length}</td>
+              <td class="chl-num">${r.peakDb.toFixed(1)} dB</td>
+              <td class="chl-num">+${r.stackingDb.toFixed(1)} dB</td></tr>`,
+          )
+          .join("");
+      const worst = rows.reduce((a, b) => (b.peak > a.peak ? b : a));
+      $("#clMeasureNote").textContent = worst.clips
+        ? `${worst.label} clips: the mix reaches ${worst.peakDb.toFixed(1)} dB, where 0 dB is where SpaceAge and Dexed clip. Try a wider voicing, a lower register, or bring the patch down.`
+        : `Loudest is ${worst.label} at ${worst.peakDb.toFixed(1)} dB, ${Math.abs(worst.peakDb).toFixed(1)} dB of headroom. One note alone peaks at ${single.peakDb.toFixed(1)} dB.`;
+    } catch (err) {
+      $("#clMeasureNote").textContent = `Could not measure: ${err.message || err}`;
+    } finally {
+      lab.measuring = false;
+      $("#clMeasure").disabled = false;
+      $("#clMeasure").textContent = "Measure progression";
+    }
+  }, 0);
+}
+
+$("#chordLabToggle").onclick = () => {
+  const panel = $("#chordLab");
+  panel.hidden = !panel.hidden;
+  $("#chordLabToggle").setAttribute("aria-expanded", String(!panel.hidden));
+  $("#chordLabToggle").classList.toggle("on", !panel.hidden);
+  if (!panel.hidden) drawChordLab();
+};
 
 // ---------------------------------------------------------------- downloads
 function download(bytes, name, type = "application/octet-stream") {
@@ -1122,5 +1361,7 @@ buildTabs();
 drawVolume();
 drawReverb();
 drawLoopControls();
+drawChordLabControls();
+drawChordLab();
 drawRoll();
 forge();

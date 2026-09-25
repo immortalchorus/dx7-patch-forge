@@ -8,7 +8,9 @@ bugs. Everything here is data in, data out: no DOM, no globals, no hidden state.
 
 `dist/js/app.js` and `dist/js/classic.js` are the only files that touch the page. Everything
 else — `designer.js`, `macros.js`, `layers.js`, `features.js`, `render.js`, `controls.js`,
-`language.js`, `dx7.js`, `ssynth.js`, `match.js`, `sample.js`, `pattern.js` — is pure. This is
+`language.js`, `dx7.js`, `ssynth.js`, `match.js`, `sample.js`, `pattern.js`, `harmony.js`,
+`chord-wheel.js` — is pure. `chord-wheel.js` draws, but it returns SVG markup as a string and
+never touches an element, the way `algorithm-chart.js` does. This is
 enforced by architecture rather than discipline: the forge runs inside a Web Worker
 (`design-worker.js`), a context with no `document` at all, so a DOM reference there does not
 degrade, it throws. `midi.js` is the one exception and is a browser-API wrapper, not forge logic.
@@ -80,3 +82,51 @@ This is the class of bug that does not error, so it is worth being explicit.
 The voice is held in **DX7 units everywhere inside OWL**. Normalisation to 0–1 happens in
 `ssynth.js` and nowhere else, which is why that file is the only place a "1" can mean either
 "maximum" or "one seventh". See [spaceage-integration.md](spaceage-integration.md).
+
+## A chord
+
+`harmony.js` is a port of SpaceAge's chord engine and is the one module in OWL whose shape was
+decided elsewhere. It holds the circle of fifths, 50 scales, 43 chord qualities, the drop
+voicings and the roman-numeral analysis, and it imports nothing — not even from OWL — so it could
+later be replaced by a package shared with SpaceAge without touching anything that draws.
+
+A chord is a plain record, and every field is named exactly as SpaceAge names it so the two can
+be compared field by field:
+
+```js
+{ degree: 0,               // 0..6 of the scale, or up to 7 for the eight-note scales
+  rootOffsetSemitones: 0,  // pushes the root off the degree, -24..24
+  quality: 0,              // index into QUALITIES; 0 is the scale-relative triad
+  inversion: 0,            // 0..3, lifts that many of the lowest voices an octave
+  voicing: 0,              // 0 closed, 1 drop 2, 2 drop 3, 3 drop 2 and 4
+  registerOctaves: 0 }     // -3..3, the whole chord up or down
+```
+
+`chordMidiNotes(chord, { keyRoot, mode })` turns one into sorted MIDI notes between 24 and 96,
+which is SpaceAge's range and is kept so that the same chord gives the same notes in both.
+
+SpaceAge's `ChordClip` carries a great deal more — rhythm, arpeggiation, strum, pan, gain, pads.
+The list of what OWL ignores and why is at the top of `harmony.js`, in code, because a chord type
+that was quietly reduced once already cost SpaceAge a round of edits that fell on the floor.
+
+## A progression
+
+A pattern carries one, and a step points into it by index:
+
+```js
+harmony: { keyPosition: 0,   // 0..11 on the circle of fifths; 0 is C, 7 is D flat
+           mode: 1,          // index into SCALES; 1 is Major
+           chords: [ ... ] } // up to 8, SpaceAge's WheelModel::maxSequence
+steps: [ { note, vel, tie, chord } ]   // chord is an index into harmony.chords, or null
+```
+
+A step with a chord plays that chord's notes instead of its own note, because the chord's notes
+are absolute and the step's note would be a second, unrelated thing to hear. Everything else about
+a step — velocity, hold, gate, tempo, division — works exactly as it did, and the transport that
+plays it is the audition loop that was already there. There is no second sequencer.
+
+Units, again explicitly: every note in `harmony.js` is a MIDI note number and every interval is in
+semitones. `chordPeak` in `features.js` reports on the mix's scale, where **1.0 is the clipping
+point** and `peakDb` is 0 dB there — not the raw carrier-sum scale that `peakLevel` uses, where
+full scale is 2.0. The two are a factor of two apart and it is the kind of mistake that does not
+error, so a number from one must never be compared with a number from the other.

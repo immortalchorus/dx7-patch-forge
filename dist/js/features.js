@@ -159,6 +159,54 @@ export function peakLevel(voice, notes = [36, 48, 60, 72, 84]) {
 }
 
 /**
+ * What a voice does when several notes sound at once.
+ *
+ * `peakLevel` above plays one note at a time, which answers a different question: four stacked
+ * carriers clip where one does not, and a patch that measures clean at every single note can
+ * still be unusable under a four-note voicing. This mixes the notes the way the preview engine
+ * does, so a chord that clips here clips audibly there: each note is rendered, scaled by the
+ * engine's 0.5, clipped on its own, and only then summed. See PreviewEngine.render.
+ *
+ * Returns, on the mix's scale where 1.0 is exactly where SpaceAge and Dexed clip:
+ *   peak       the loudest the chord gets
+ *   peakDb     the same, in dB, 0 = clipping (negative is headroom)
+ *   clips      whether it reached the clipping point
+ *   stackingDb how much louder the chord is than its loudest single note, in dB: the cost of
+ *              stacking, which is the number a voicing decision is actually made on
+ *   voices     per note, { note, peak } on the same scale, so a note that dominates is visible
+ */
+export function chordPeak(voice, notes, { velocity = 100, sampleRate = 22050, hold = 0.7, tail = 0.1 } = {}) {
+  const list = [...new Set(notes)].filter((n) => Number.isFinite(n));
+  if (!list.length) return { peak: 0, peakDb: -Infinity, clips: false, stackingDb: 0, voices: [] };
+
+  const rendered = list.map((note) => renderNote(voice, { note, velocity, sampleRate, hold, tail }).samples);
+  const length = Math.max(...rendered.map((s) => s.length));
+  const voices = list.map((note, i) => {
+    let peak = 0;
+    // The engine's per-note stage: gain 0.5, then a hard clip of that one note on its own.
+    for (const x of rendered[i]) peak = Math.max(peak, Math.min(1, Math.abs(x) * 0.5));
+    return { note, peak };
+  });
+
+  let peak = 0;
+  for (let t = 0; t < length; t++) {
+    let sum = 0;
+    for (const samples of rendered) {
+      if (t < samples.length) sum += Math.max(-1, Math.min(1, samples[t] * 0.5));
+    }
+    peak = Math.max(peak, Math.abs(sum));
+  }
+  const loudestVoice = Math.max(...voices.map((v) => v.peak));
+  return {
+    peak,
+    peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
+    clips: peak >= 1,
+    stackingDb: peak > 0 && loudestVoice > 0 ? 20 * Math.log10(peak / loudestVoice) : 0,
+    voices,
+  };
+}
+
+/**
  * Measure a voice. Returns:
  *  centroid  spectral centroid of the note body, in multiples of the reference fundamental
  *  attack    seconds to reach within 1.5 dB of peak

@@ -5,9 +5,15 @@
 // sweep shows keyboard level and rate scaling, fast repeats show envelope retriggering, and a
 // held note shows the sustain stage and the release tail. Nothing here is saved into a voice.
 
+import { sanitizeChord, defaultChord, chordMidiNotes, MODE_MAJOR, wrap, pitchClassAt } from "./harmony.js";
+
 export const STEPS = 16;
 export const MIN_BPM = 30;
 export const MAX_BPM = 240;
+
+// How many chords a progression holds. Eight is SpaceAge's WheelModel::maxSequence, kept so a
+// progression written here is one SpaceAge could hold too.
+export const MAX_CHORDS = 8;
 
 // Note value of a step, as a fraction of a whole note.
 export const DIVISIONS = [
@@ -17,23 +23,28 @@ export const DIVISIONS = [
   { id: "1/16", label: "1/16", beats: 0.25 },
 ];
 
-// Extra notes played with each step, for hearing detune beating and how a voice stacks up.
-export const CHORDS = [
-  { id: "off", label: "Single note", intervals: [0] },
-  { id: "5th", label: "Fifths", intervals: [0, 7] },
-  { id: "maj7", label: "Major 7th", intervals: [0, 4, 7, 11] },
-  { id: "min9", label: "Minor 9th", intervals: [0, 3, 7, 10, 14] },
-];
+/**
+ * The progression a pattern plays: a key, a scale, and a list of chord records.
+ *
+ * This replaces an earlier four-entry list of fixed interval sets bolted onto every step. That
+ * was enough to hear a voice stack up and nothing more: it had no key, so it could not tell a
+ * major seventh in C from one in F sharp, and no spelling, so it could not name what it played.
+ * A step now points at a chord in this list by index, which is what lets one progression be
+ * edited in one place and heard on as many steps as it is put on.
+ */
+export function defaultHarmony() {
+  return { keyPosition: 0, mode: MODE_MAJOR, chords: [] };
+}
 
-const step = (note, vel = 100, tie = false) => ({ note, vel, tie });
+const step = (note, vel = 100, tie = false, chord = null) => ({ note, vel, tie, chord });
 const rest = () => step(null);
 
 export function defaultPattern() {
   return {
     bpm: 110,
     division: "1/8",
-    chord: "off",
     gate: 0.8, // fraction of a step the key is held, unless the step is tied
+    harmony: defaultHarmony(),
     steps: Array.from({ length: STEPS }, (_, i) => step([60, 63, 67, 70][i % 4] + (i >= 8 ? 12 : 0), 100)),
   };
 }
@@ -81,13 +92,33 @@ export const PRESETS = [
   {
     id: "chord",
     label: "Held chord",
-    hint: "A slow chord: hear detune beating, chorus width and how the voice stacks up",
+    hint: "A slow major seventh: hear detune beating, chorus width and how the voice stacks up",
     make: () => ({
       ...defaultPattern(),
       bpm: 60,
       division: "1/4",
-      chord: "maj7",
-      steps: Array.from({ length: STEPS }, (_, i) => (i % 4 === 0 ? step(48 + (i >= 8 ? 5 : 0), 90) : step(null, 90, true))),
+      harmony: { keyPosition: 0, mode: MODE_MAJOR, chords: [{ ...defaultChord(), quality: 5 }] },
+      steps: Array.from({ length: STEPS }, (_, i) => (i % 8 === 0 ? step(null, 90, false, 0) : step(null, 90, true))),
+    }),
+  },
+  {
+    id: "progression",
+    label: "Chord progression",
+    hint: "I V vi IV as sevenths: hear whether four stacked notes stay clear or turn to mud",
+    make: () => ({
+      ...defaultPattern(),
+      bpm: 100,
+      division: "1/4",
+      harmony: {
+        keyPosition: 0,
+        mode: MODE_MAJOR,
+        // Quality 1 is the scale-relative 7th, so each degree gets the seventh chord the key
+        // itself builds there rather than the same shape transposed.
+        chords: [0, 4, 5, 3].map((degree) => ({ ...defaultChord(), degree, quality: 1 })),
+      },
+      steps: Array.from({ length: STEPS }, (_, i) =>
+        i % 4 === 0 ? step(null, 96, false, (i / 4) % 4) : step(null, 96, true),
+      ),
     }),
   },
   {
@@ -100,7 +131,6 @@ export const PRESETS = [
 
 export const presetById = (id) => PRESETS.find((p) => p.id === id);
 export const divisionById = (id) => DIVISIONS.find((d) => d.id === id) || DIVISIONS[1];
-export const chordById = (id) => CHORDS.find((c) => c.id === id) || CHORDS[0];
 
 /** How long one step lasts, in seconds. */
 export const stepSeconds = (pattern) => (60 / clampBpm(pattern.bpm)) * divisionById(pattern.division).beats;
@@ -108,45 +138,98 @@ const clampBpm = (b) => Math.min(MAX_BPM, Math.max(MIN_BPM, b || 120));
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, Math.round(n)));
 
+/** Force a progression into legal shape, whatever it was loaded from. */
+export function sanitizeHarmony(h) {
+  const list = Array.isArray(h?.chords) ? h.chords.slice(0, MAX_CHORDS) : [];
+  return {
+    keyPosition: wrap(Number.isFinite(+h?.keyPosition) ? +h.keyPosition : 0),
+    mode: clamp(h?.mode ?? MODE_MAJOR, 0, 49),
+    chords: list.map(sanitizeChord),
+  };
+}
+
 /** Force a pattern into legal shape, whatever it was loaded from. */
 export function sanitizePattern(p) {
   const base = defaultPattern();
+  const harmony = sanitizeHarmony(p?.harmony);
   const steps = Array.from({ length: STEPS }, (_, i) => {
     const s = p?.steps?.[i] || {};
     const note = s.note == null ? null : clamp(s.note, 0, 127);
-    return { note, vel: clamp(s.vel ?? 100, 1, 127), tie: !!s.tie };
+    // A chord index that names no chord is dropped rather than kept as a dangling reference:
+    // deleting a chord must not leave steps pointing at a hole.
+    const index = s.chord == null ? null : clamp(s.chord, 0, MAX_CHORDS - 1);
+    const chord = index != null && index < harmony.chords.length ? index : null;
+    return { note, vel: clamp(s.vel ?? 100, 1, 127), tie: !!s.tie, chord };
   });
   return {
     bpm: clampBpm(p?.bpm ?? base.bpm),
     division: divisionById(p?.division).id,
-    chord: chordById(p?.chord).id,
     gate: Math.min(1, Math.max(0.05, p?.gate ?? base.gate)),
+    harmony,
     steps,
   };
 }
 
+/** The chord record a step plays, or null if it plays its own note instead. */
+export function stepChord(pattern, index) {
+  const at = pattern?.steps?.[index]?.chord;
+  if (at == null) return null;
+  return pattern.harmony?.chords?.[at] ?? null;
+}
+
+/** The pitch class the progression's key is rooted on. */
+export const harmonyKeyRoot = (harmony) => pitchClassAt(harmony?.keyPosition ?? 0);
+
+/** The MIDI notes a step's chord sounds, or null if the step has no chord. */
+export function stepChordNotes(pattern, index) {
+  const chord = stepChord(pattern, index);
+  if (!chord) return null;
+  return chordMidiNotes(chord, { keyRoot: harmonyKeyRoot(pattern.harmony), mode: pattern.harmony.mode });
+}
+
 /**
  * What a step plays: the notes to start, and how long to hold them.
- * A step with a note starts it; each tied rest after it extends that note by another step, so a
- * note followed by tied rests is one long note.
- * Returns null when nothing starts on this step.
+ *
+ * A step starts either a chord from the progression or its own single note; a chord wins, because
+ * its notes are absolute and the step's note would be a second, unrelated thing to hear. Each
+ * tied rest after it extends what started by another step, so a note followed by tied rests is
+ * one long note. Returns null when nothing starts on this step.
  */
 export function stepEvents(pattern, index) {
   const steps = pattern.steps;
   const s = steps[index];
-  if (!s || s.note == null) return null;
+  if (!s) return null;
+  const chordNotes = stepChordNotes(pattern, index);
+  if (!chordNotes && s.note == null) return null;
   let length = 1;
-  for (let i = index + 1; i < steps.length && steps[i].tie && steps[i].note == null; i++) length++;
-  const intervals = chordById(pattern.chord).intervals;
-  return { notes: intervals.map((iv) => Math.min(127, s.note + iv)), velocity: s.vel, steps: length };
+  for (let i = index + 1; i < steps.length && steps[i].tie && steps[i].note == null && steps[i].chord == null; i++) length++;
+  return { notes: chordNotes || [s.note], velocity: s.vel, steps: length };
 }
 
 /**
  * The same pattern moved by whole semitones, or null if that would push a note off the
  * keyboard. Refusing is better than clamping: a clamped sweep silently collapses into unison.
+ *
+ * A progression moves by whole octaves only. Its chords are held as degrees of a key, so moving
+ * them by some other interval would mean either rewriting every degree or changing the key, and
+ * both of those are edits the user should make on purpose rather than have happen to them while
+ * the octave button is pressed. An octave is `registerOctaves`, which is a field the chord
+ * already has, and which SpaceAge clamps to three either way.
  */
 export function shiftPattern(pattern, semitones) {
   const notes = pattern.steps.filter((s) => s.note != null);
   if (notes.some((s) => s.note + semitones < 0 || s.note + semitones > 127)) return null;
-  return { ...pattern, steps: pattern.steps.map((s) => (s.note == null ? { ...s } : { ...s, note: s.note + semitones })) };
+  const chords = pattern.harmony?.chords ?? [];
+  let moved = chords;
+  if (chords.length) {
+    if (semitones % 12 !== 0) return null;
+    const octaves = semitones / 12;
+    if (chords.some((c) => Math.abs(c.registerOctaves + octaves) > 3)) return null;
+    moved = chords.map((c) => ({ ...c, registerOctaves: c.registerOctaves + octaves }));
+  }
+  return {
+    ...pattern,
+    harmony: { ...pattern.harmony, chords: moved },
+    steps: pattern.steps.map((s) => (s.note == null ? { ...s } : { ...s, note: s.note + semitones })),
+  };
 }

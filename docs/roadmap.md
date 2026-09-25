@@ -84,6 +84,34 @@ scored by relative amplitude spectral error weighted to the low harmonics. Run i
 across a few parallel-carrier candidates. Target 0.10 relative error; published work puts a
 six-oscillator voice at 0.07-0.15 against real instrument tones, which is the edge of audible.
 
+## 8. Chord Lab, and what is left of it
+
+**What it is.** A circle-of-fifths wheel, a progression of up to eight chords, and a chord row on
+the audition loop. The musical model is a port of SpaceAge's chord engine
+(docs/spaceage-integration.md); the wheel is rebuilt as SVG. The reason it is in a patch designer
+rather than a sequencer is the measurement: `chordPeak` renders every chord through the current
+patch and reports what the mix peaks at, which is the one thing only OWL can do, and it agrees
+with the preview engine to within a rounding error.
+
+**What was deliberately not ported**, and so what a person cannot do here: arpeggiation, strum,
+per-chord rhythm patterns, pan and pan motion, per-chord gain, pads and playback modes,
+hand-entered custom chords, and progressions longer than eight chords. The reasons are listed in
+code at the top of `harmony.js`. Most of them are composition features that the loop's own steps
+already cover or that mean nothing with one instrument and a mono-summed preview.
+
+**What is worth doing next, in order.**
+
+- **Play a progression out to hardware.** `midi.js` already sends; a progression going out to a
+  real DX7 would let a patch be auditioned under chords on the actual instrument.
+- **Measure automatically rather than on a button.** The measurement takes a few hundred
+  milliseconds for four notes, which is too slow to run on every slider move but not too slow to
+  run when the sliders stop. The loop meter already shows the live peak; what is missing is the
+  per-chord breakdown appearing without being asked for.
+- **Let the measurement suggest the fix.** It reports that a voicing clips; it could report which
+  voicing does not, since trying all four is four renders.
+- **The minor pad.** SpaceAge has a `NumeralPadComponent` for minor keys. OWL has the scale
+  selector instead, which covers more but reads as less musical.
+
 ## Done recently
 
 Classic editor tab · audition loop with diagnostic patterns · monitoring reverb and level ·

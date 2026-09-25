@@ -112,15 +112,53 @@
                 <label>Pattern <select id="loopPreset"></select></label>
                 <label>Tempo <input id="loopBpm" type="number" min="30" max="240" step="1"><small>BPM</small></label>
                 <label>Step <select id="loopDivision"></select></label>
-                <label>Notes <select id="loopChord"></select></label>
                 <label>Gate <input id="loopGate" type="range" min="5" max="100" step="5"><output id="loopGateOut"></output></label>
+                <button id="chordLabToggle" aria-expanded="false" aria-controls="chordLab">Chord Lab</button>
               </div>
               <p class="loop-hint" id="loopHint"></p>
               <div class="roll" id="roll" aria-label="Pattern notes"></div>
               <div class="lane lane-tie" id="tieLane" aria-label="Hold the previous note through this step"></div>
               <div class="lane lane-vel" id="velLane" aria-label="Step velocity"></div>
+              <div class="lane lane-chord" id="chordLane" aria-label="Chord played on this step"></div>
               <small class="hint">Click the grid to place a note, click it again to clear it. The velocity row sets how hard each step is played;
                 <b>hold</b> extends the note before it. The loop keeps playing while you edit, so you hear changes as you make them. It is never saved into a patch.</small>
+
+              <div class="chordlab" id="chordLab" hidden>
+                <div class="chl-head">
+                  <span class="chl-title">CHORD LAB</span>
+                  <label>Key <select id="clKey"></select></label>
+                  <label>Scale <select id="clMode"></select></label>
+                  <small id="clKeySig"></small>
+                </div>
+                <div class="chl-body">
+                  <svg id="clWheel" viewBox="0 0 360 360" role="group" aria-label="Circle of fifths: pick a chord to add it to the progression"></svg>
+                  <div class="chl-side">
+                    <div class="chl-block">
+                      <div class="chl-block-head"><span>PROGRESSION</span><small id="clProgNote">—</small></div>
+                      <div id="clProgression" class="chl-prog" aria-label="Chords in the progression"></div>
+                    </div>
+                    <div class="chl-block" id="clEditorBlock" hidden>
+                      <div class="chl-block-head"><span>SELECTED CHORD</span><small id="clChordName">—</small></div>
+                      <div class="chl-editor">
+                        <label>Quality <select id="clQuality"></select></label>
+                        <label>Voicing <select id="clVoicing"></select></label>
+                        <label>Inversion <select id="clInversion"></select></label>
+                        <label>Register <select id="clRegister"></select></label>
+                      </div>
+                      <p class="chl-notes" id="clNotes"></p>
+                    </div>
+                    <div class="chl-block">
+                      <div class="chl-block-head"><span>UNDER THIS PATCH</span><button id="clMeasure">Measure progression</button></div>
+                      <table class="chl-measure" id="clMeasureTable"></table>
+                      <p class="chl-hint" id="clMeasureNote">Four stacked carriers clip where one does not. This renders every chord through
+                        the current patch and reports what the mix peaks at, so a voicing can be chosen on a number rather than a guess.</p>
+                    </div>
+                  </div>
+                </div>
+                <small class="hint">Click a chord on the wheel to add it to the progression. The seven lit chords are the ones in the key; the
+                  rest are drawn for context. The <b>chord</b> row under the pattern puts a chord on a step &mdash; click a step to move it through
+                  the progression and back to none. A step with a chord plays that chord instead of its own note.</small>
+              </div>
             </div>
           </div>
         </div>
