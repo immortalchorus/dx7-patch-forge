@@ -8,7 +8,8 @@ import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
 import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot, placeChord, stepChord, progressionChords } from "./pattern.js";
 import { honeycombSvg, honeycombSize } from "./chord-honeycomb.js";
-import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral } from "./harmony.js";
+import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral, scaleModeNamed } from "./harmony.js";
+import { TUTORIAL_STEPS } from "./tutorial.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
 import { dbToGain, sanitizeVolume, volumeText, DEFAULT_DB } from "./monitor.js";
 import { noteName } from "./dx7-params.js";
@@ -1194,6 +1195,105 @@ $("#chordLabToggle").onclick = () => {
   $("#chordLabToggle").classList.toggle("on", !panel.hidden);
   if (!panel.hidden) drawChordLab();
 };
+
+// ---------------------------------------------------------------- the tutorial
+// A guided tour that runs on the real Chord Lab rather than on a picture of it, so it cannot
+// drift out of date and so each step can be *heard*. The steps are data in tutorial.js; this is
+// the api they drive and the callout that shows them.
+//
+// The tour borrows the loop and gives it back: the pattern is snapshotted when it starts and
+// restored exactly when it ends, however it ends, so a progression you were part way through
+// survives being shown around.
+const tour = { at: -1, saved: null, selected: null };
+
+/** What a tutorial step is allowed to do. The steps name intent; this carries it out. */
+const tourApi = {
+  setKey: (position) => editHarmony((h) => (h.keyPosition = position)),
+  setScale: (name) => {
+    const mode = scaleModeNamed(name);
+    if (mode >= 0) editHarmony((h) => (h.mode = mode));
+  },
+  setSpelling: (how) => editHarmony((h) => (h.preferFlats = how === "key" ? null : how === "flats")),
+  clearChords: () => {
+    lab.selected = null;
+    editPattern((p) => p.steps.forEach((s) => (s.chord = null)));
+    drawChordLab();
+  },
+  addChord: (degree, quality = 0) => addChord({ ...defaultChord(), degree, quality }),
+  selectNth: (n) => {
+    const at = progressionChords(loop.pattern)[n];
+    if (!at) return;
+    lab.selected = at.step;
+    drawChordLab();
+  },
+  editChord: (patch) => editSelected((c) => Object.assign(c, patch)),
+  measure: () => measureProgression(),
+};
+
+function startTour() {
+  if (tour.at >= 0) return;
+  tour.saved = JSON.parse(JSON.stringify(loop.pattern));
+  tour.selected = lab.selected;
+  $("#chordLab").hidden = false;
+  $("#chordLabToggle").setAttribute("aria-expanded", "true");
+  $("#chordLabToggle").classList.add("on");
+  $("#tourCallout").hidden = false;
+  $("#tutorialOpen").setAttribute("aria-expanded", "true");
+  showTourStep(0);
+}
+
+function endTour() {
+  if (tour.at < 0) return;
+  clearTourTarget();
+  tour.at = -1;
+  $("#tourCallout").hidden = true;
+  $("#tutorialOpen").setAttribute("aria-expanded", "false");
+  // Give the loop back exactly as it was found.
+  if (tour.saved) {
+    loop.pattern = sanitizePattern(tour.saved);
+    lab.selected = tour.selected;
+    tour.saved = null;
+    pushPattern();
+    drawChordLab();
+    drawRoll();
+  }
+  $("#tutorialOpen").focus();
+}
+
+const clearTourTarget = () => document.querySelectorAll(".tour-target").forEach((el) => el.classList.remove("tour-target"));
+
+function showTourStep(index) {
+  const step = TUTORIAL_STEPS[index];
+  if (!step) return endTour();
+  tour.at = index;
+  try {
+    step.run?.(tourApi);
+  } catch (err) {
+    console.warn("A tutorial step could not run.", err);
+  }
+  clearTourTarget();
+  const target = step.target ? $(step.target) : null;
+  target?.classList.add("tour-target");
+
+  $("#tourStepOf").textContent = `${index + 1} / ${TUTORIAL_STEPS.length}`;
+  $("#tourTitle").textContent = step.title;
+  $("#tourBody").textContent = step.body;
+  $("#tourBack").disabled = index === 0;
+  $("#tourNext").textContent = index === TUTORIAL_STEPS.length - 1 ? "Done" : "Next";
+  target?.scrollIntoView({ block: "center", behavior: "smooth" });
+  $("#tourCallout").focus();
+}
+
+$("#tutorialOpen").onclick = () => (tour.at >= 0 ? endTour() : startTour());
+$("#tourNext").onclick = () => showTourStep(tour.at + 1);
+$("#tourBack").onclick = () => showTourStep(tour.at - 1);
+$("#tourClose").onclick = () => endTour();
+addEventListener("keydown", (e) => {
+  if (tour.at < 0) return;
+  if (e.key === "Escape") (e.preventDefault(), endTour());
+  else if (e.key === "ArrowRight") (e.preventDefault(), showTourStep(tour.at + 1));
+  else if (e.key === "ArrowLeft" && tour.at > 0) (e.preventDefault(), showTourStep(tour.at - 1));
+});
 
 // ---------------------------------------------------------------- downloads
 function download(bytes, name, type = "application/octet-stream") {

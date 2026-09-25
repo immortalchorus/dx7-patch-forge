@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111111">
+  <title>Chord Lab tutorial — OWL</title>
+  <meta name="description" content="How to use Chord Lab in OWL: pick chords from the honeycomb, build a progression, and measure what a patch does under four notes at once.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doc">
+  <main class="shell">
+    <header>
+      <div class="brand"><span class="brand-mark">OWL</span><span>OPERATOR WAVEFORM LAB</span></div>
+      <div class="status"><i></i> <span>CHORD LAB TUTORIAL</span></div>
+    </header>
+
+    <article class="doc-body">
+      <p class="eyebrow">TUTORIAL</p>
+      <h1 id="docTitle"></h1>
+      <p class="doc-lede" id="docIntro"></p>
+      <p class="doc-note">This is the same tutorial the <b>Tutorial</b> button runs inside the app, written out to read in
+        one go. The guided version highlights each control and plays the result, which is worth doing at least once:
+        the whole point of Chord Lab is what you hear and what it measures.
+        <a href="index.html">Open OWL &#8599;</a></p>
+      <ol class="doc-steps" id="docSteps"></ol>
+      <p class="doc-note doc-foot">Written once, read twice: these steps are one list of records in
+        <code>dist/js/tutorial.js</code>. The tour walks them and this page renders them, so the two cannot disagree,
+        and a test checks that every control they point at still exists.</p>
+    </article>
+  </main>
+
+  <script type="module">
+    import { TUTORIAL_TITLE, TUTORIAL_INTRO, TUTORIAL_STEPS } from "./js/tutorial.js";
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    document.title = `${TUTORIAL_TITLE} tutorial — OWL`;
+    document.getElementById("docTitle").textContent = TUTORIAL_TITLE;
+    document.getElementById("docIntro").textContent = TUTORIAL_INTRO;
+    document.getElementById("docSteps").innerHTML = TUTORIAL_STEPS
+      .map((s) => `<li id="${esc(s.id)}"><h2>${esc(s.title)}</h2><p>${esc(s.body)}</p></li>`)
+      .join("");
+  </script>
+</body>
+</html>
