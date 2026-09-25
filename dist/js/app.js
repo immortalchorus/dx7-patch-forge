@@ -914,7 +914,8 @@ addEventListener("keydown", (e) => {
 const lab = { selected: null, measuring: false };
 
 const harmonyOf = () => loop.pattern.harmony;
-const labelFor = (chord) => chordLabel(chord, { keyPosition: harmonyOf().keyPosition, mode: harmonyOf().mode });
+const labelFor = (chord) =>
+  chordLabel(chord, { keyPosition: harmonyOf().keyPosition, mode: harmonyOf().mode, preferFlats: harmonyOf().preferFlats });
 const notesOf = (chord) => chordMidiNotes(chord, { keyRoot: harmonyKeyRoot(harmonyOf()), mode: harmonyOf().mode });
 
 function editHarmony(change) {
@@ -929,6 +930,8 @@ function editHarmony(change) {
 function drawChordLabControls() {
   $("#clKey").innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i}">${esc(majorName(i))} major</option>`).join("");
   $("#clMode").innerHTML = SCALES.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("");
+  $("#clSpelling").innerHTML =
+    `<option value="key">From the key</option><option value="sharps">Sharps</option><option value="flats">Flats</option>`;
   $("#clQuality").innerHTML = QUALITIES.map((q, i) => `<option value="${i}">${esc(q.name)}</option>`).join("");
   $("#clVoicing").innerHTML = VOICINGS.map((v) => `<option value="${v.id}" title="${esc(v.hint)}">${esc(v.label)}</option>`).join("");
   $("#clInversion").innerHTML = ["Root position", "1st", "2nd", "3rd"].map((t, i) => `<option value="${i}">${esc(t)}</option>`).join("");
@@ -954,6 +957,7 @@ function drawHoneycomb(h) {
   svg.innerHTML = honeycombSvg(h.keyPosition, h.mode, {
     width: CELL,
     pad: PAD,
+    preferFlats: h.preferFlats,
     selected: lab.selected == null ? null : h.chords[lab.selected]?.degree,
   });
 }
@@ -962,6 +966,7 @@ function drawChordLab() {
   const h = harmonyOf();
   $("#clKey").value = String(h.keyPosition);
   $("#clMode").value = String(h.mode);
+  $("#clSpelling").value = h.preferFlats == null ? "key" : h.preferFlats ? "flats" : "sharps";
   $("#clKeySig").textContent = h.mode === MODE_MAJOR ? keySignature(h.keyPosition) : SCALES[h.mode].name;
   drawHoneycomb(h);
 
@@ -1062,6 +1067,8 @@ $("#clInversion").onchange = (e) => editSelected((c) => (c.inversion = +e.target
 $("#clRegister").onchange = (e) => editSelected((c) => (c.registerOctaves = +e.target.value));
 $("#clKey").onchange = (e) => editHarmony((h) => (h.keyPosition = +e.target.value));
 $("#clMode").onchange = (e) => editHarmony((h) => (h.mode = +e.target.value));
+$("#clSpelling").onchange = (e) =>
+  editHarmony((h) => (h.preferFlats = e.target.value === "key" ? null : e.target.value === "flats"));
 
 /** Play the selected chord once, so an edit is heard as it is made. */
 async function auditionSelected() {

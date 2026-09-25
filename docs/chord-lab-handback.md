@@ -256,3 +256,53 @@ edges set the inversion, and two discs set the octave (`edgeSetsInversion`, `dis
 `discLowersOctave`, `bodyStillAdds`). OWL keeps those on a separate panel beside the honeycomb.
 Folding them onto the cells would make the two products feel like one, and a hexagon is the right
 shape for it — six edges is six affordances that a circle segment does not have.
+
+## 9. Every scale now carries note names, not only the major ones
+
+A correction to this document and to the code. Section 8 said the honeycomb made all fifty scales
+usable; that was half true. The cells appeared, but for anything other than a major scale they
+were labelled with roman numerals alone — `i`, `bII`, `iii°` — which tells a player what a chord
+*does* and not what to put their hands on.
+
+The comment in `harmony.js` justified that by claiming a real spelling engine was needed and that
+"SpaceAge does not have either". **That was wrong.** `spelledScaleDegreeName` in
+`PluginEditor.cpp` is exactly that engine, and it had already been read during the `chordName`
+fix. It is now ported as `degreeSpelling(keyRoot, mode, degree, preferFlats)`.
+
+The rule it encodes is simple and general: **a seven-note scale uses each of the seven letters
+once, in order from the tonic, whatever its intervals are.** That is what a seven-note scale is.
+So the same derivation that spells a major key spells every mode:
+
+| Scale | Now reads |
+| --- | --- |
+| C Phrygian Dominant | C · D♭ · E° · Fm · G° · A♭aug · B♭m |
+| E Phrygian Dominant | E · F · G♯° · Am · B° · Caug · Dm |
+| C Harmonic Minor | Cm · D° · E♭aug · Fm · G · A♭ · B° |
+| C Dorian | Cm · Dm · E♭ · F · Gm · A° · B♭ |
+
+The E Phrygian Dominant row is worth noting: the SpaceAge brief states in prose that this scale
+is "E, F, G#dim, Am, Bdim, Caug, Dm". The port reproduces it exactly, which is an independent
+check that the two agree — it is asserted in `tests/harmony.test.js`.
+
+The numeral did not go away. Each honeycomb cell now shows the note name and the numeral
+together, which is what the two are for: the name is what you play, the numeral is what it does.
+
+### Where the key is not enough, and the control that fixes it
+
+A five-, six- or eight-note scale has no letter per degree to be owed — a pentatonic skips two of
+them, a diminished scale needs eight — so those fall back to a chromatic name, sharp or flat by
+the key's own spelling. That is SpaceAge's behaviour and it is kept.
+
+It is also, for these scales, sometimes wrong in a way no rule reliably fixes. C minor pentatonic
+is spelled with an E flat by every player alive, but the key of C spells itself with sharps, so
+the derivation gives D♯ and A♯. Several heuristics were tried against the fifty scales — "flats
+if the scale has a minor third", "flats if it has any flattened degree" — and each had
+counterexamples among them.
+
+So it is a control rather than a guess: **Spelling — from the key / sharps / flats**, stored on
+the progression as `preferFlats` (`null` meaning "from the key", which is the default and the
+SpaceAge behaviour). It also reaches seven-note scales, where it chooses which enharmonic tonic
+to spell from: F♯ major's six sharps become G♭ major's six flats.
+
+Spelling is a name and never a pitch. The same chord sounds identically however it is spelled,
+and that is asserted too.

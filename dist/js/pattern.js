@@ -5,7 +5,7 @@
 // sweep shows keyboard level and rate scaling, fast repeats show envelope retriggering, and a
 // held note shows the sustain stage and the release tail. Nothing here is saved into a voice.
 
-import { sanitizeChord, defaultChord, chordMidiNotes, MODE_MAJOR, wrap, pitchClassAt } from "./harmony.js";
+import { sanitizeChord, defaultChord, chordMidiNotes, MODE_MAJOR, wrap, pitchClassAt, usesFlats } from "./harmony.js";
 
 export const STEPS = 16;
 export const MIN_BPM = 30;
@@ -33,7 +33,13 @@ export const DIVISIONS = [
  * edited in one place and heard on as many steps as it is put on.
  */
 export function defaultHarmony() {
-  return { keyPosition: 0, mode: MODE_MAJOR, chords: [] };
+  // preferFlats null means "however the key spells itself", which is what SpaceAge does. The
+  // override exists because that answer is only reliable for seven-note scales: those own a
+  // letter per degree, so the key decides the spelling and is always right. A five- or six-note
+  // scale has no such letter and falls back to a chromatic name, and there the key can be wrong
+  // in a way no rule reliably fixes - C minor pentatonic is spelled with an E flat by every
+  // player alive, but the key of C spells itself with sharps.
+  return { keyPosition: 0, mode: MODE_MAJOR, preferFlats: null, chords: [] };
 }
 
 const step = (note, vel = 100, tie = false, chord = null) => ({ note, vel, tie, chord });
@@ -144,6 +150,7 @@ export function sanitizeHarmony(h) {
   return {
     keyPosition: wrap(Number.isFinite(+h?.keyPosition) ? +h.keyPosition : 0),
     mode: clamp(h?.mode ?? MODE_MAJOR, 0, 49),
+    preferFlats: h?.preferFlats == null ? null : !!h.preferFlats,
     chords: list.map(sanitizeChord),
   };
 }
@@ -208,6 +215,10 @@ export function stepChord(pattern, index) {
 
 /** The pitch class the progression's key is rooted on. */
 export const harmonyKeyRoot = (harmony) => pitchClassAt(harmony?.keyPosition ?? 0);
+
+/** How this progression spells its notes: its own choice, or whatever the key does. */
+export const harmonyPrefersFlats = (harmony) =>
+  harmony?.preferFlats == null ? usesFlats(harmony?.keyPosition ?? 0) : harmony.preferFlats;
 
 /** The MIDI notes a step's chord sounds, or null if the step has no chord. */
 export function stepChordNotes(pattern, index) {

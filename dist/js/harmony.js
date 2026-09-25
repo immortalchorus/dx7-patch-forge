@@ -103,35 +103,69 @@ const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
 const LETTER_PITCH_CLASS = [0, 2, 4, 5, 7, 9, 11];
 const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
 
+// Which letter a tonic takes, depending on whether the key is being spelled with sharps or flats.
+// Pitch class 6 is F sharp to a sharp key and G flat to a flat one, and the letter it starts from
+// decides how the whole scale above it is spelled.
+const SHARP_TONIC_LETTER = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+const FLAT_TONIC_LETTER = [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6];
+
+const SHARP_NAMES = ["C", "C" + SHARP, "D", "D" + SHARP, "E", "F", "F" + SHARP, "G", "G" + SHARP, "A", "A" + SHARP, "B"];
+const FLAT_NAMES = ["C", "D" + FLAT, "D", "E" + FLAT, "E", "F", "G" + FLAT, "G", "A" + FLAT, "A", "B" + FLAT, "B"];
+
+/** A plain name for a pitch class, when nothing better is available. */
+export function pitchClassName(pitchClass, preferFlats = false) {
+  const pc = ((Math.round(pitchClass) % 12) + 12) % 12;
+  return preferFlats ? FLAT_NAMES[pc] : SHARP_NAMES[pc];
+}
+
 /**
- * How a major key spells its own nth degree: a letter, and whatever accidental puts that letter
- * on the right pitch.
+ * How a key spells its own nth degree: a letter, and whatever accidental puts that letter on the
+ * right pitch. Ported from `spelledScaleDegreeName` in SpaceAge's PluginEditor.cpp.
  *
- * This is derived rather than looked up. Naming a degree by reading `majorName` at another wheel
- * position - which is what SpaceAge did - goes wrong wherever a degree lands past position 6,
- * because that table switches to flats regardless of the key being spelled. It printed D flat for
- * the seventh degree of D major, which is the right pitch under the wrong name.
+ * `keyRoot` is a pitch class 0-11, not a wheel position.
+ *
+ * **This works for every seven-note scale, not only major.** A scale of seven notes uses each of
+ * the seven letters once, in order from the tonic, whatever its intervals are: E Phrygian
+ * Dominant is E F G sharp A B C D, and each of those is the letter its degree is owed. That is
+ * what lets the exotic scales carry real note names rather than only roman numerals.
+ *
+ * Scales that are not seven notes have no such letter to be owed - a pentatonic skips two of
+ * them, a diminished scale needs eight - so those fall back to a plain chromatic name, spelled
+ * with sharps or flats as `preferFlats` says.
+ *
+ * The derivation matters. Naming a degree by reading `majorName` at another wheel position, which
+ * is what SpaceAge's wheel did, goes wrong wherever a degree lands past position 6, because that
+ * table switches to flats regardless of the key being spelled: it printed D flat for the seventh
+ * degree of D major, the right pitch under the wrong name.
  */
-export function degreeSpelling(keyPosition, degree) {
-  const key = wrap(keyPosition);
-  const d = ((degree % 7) + 7) % 7;
-  const from = LETTERS.indexOf(majorName(key)[0]);
+export function degreeSpelling(keyRoot, mode, degree, preferFlats = false) {
+  const scale = scaleByMode(mode);
+  const count = Math.max(1, scale.count);
+  const d = clampInt(degree, 0, count - 1);
+  const root = clampInt(keyRoot, 0, 11);
+  const target = (root + scale.intervals[d]) % 12;
+  if (count !== 7) return pitchClassName(target, preferFlats);
+
+  const from = (preferFlats ? FLAT_TONIC_LETTER : SHARP_TONIC_LETTER)[root];
   const letterIndex = (from + d) % 7;
-  const target = (pitchClassAt(key) + MAJOR_STEPS[d]) % 12;
   // Shortest signed distance from the natural letter to the pitch we want, so a letter a semitone
   // sharp is a sharp rather than eleven flats.
-  const accidental = (((target - LETTER_PITCH_CLASS[letterIndex] + 18) % 12) - 6);
+  const accidental = ((target - LETTER_PITCH_CLASS[letterIndex] + 18) % 12) - 6;
   const symbol = accidental > 0 ? SHARP : FLAT;
   return LETTERS[letterIndex] + symbol.repeat(Math.min(3, Math.abs(accidental)));
 }
 
 /**
- * The chord's own name, for a slot label. The minor degrees carry an m and the diminished seventh
- * degree gets its symbol, because "B" alone would be a lie about what sounds.
+ * The chord's own name in a major key, for a slot label. The minor degrees carry an m and the
+ * diminished seventh degree gets its symbol, because "B" alone would be a lie about what sounds.
+ *
+ * This is the wheel's own naming and stays major-only on purpose: it is what SpaceAge's FIFTHS
+ * gate sweeps. Everything else goes through `chordLabel`, which handles any scale.
  */
 export function chordName(keyPosition, degree) {
   if (!(degree >= 0 && degree < 7)) return "";
-  const base = degreeSpelling(keyPosition, degree);
+  const key = wrap(keyPosition);
+  const base = degreeSpelling(pitchClassAt(key), MODE_MAJOR, degree, usesFlats(key));
   if (degree === 6) return base + DIMINISHED;
   if (degree === 1 || degree === 2 || degree === 5) return base + "m";
   return base;
@@ -193,7 +227,7 @@ export const SCALES = [
   { name: "Bebop Major", intervals: [0, 2, 4, 5, 7, 8, 9, 11], count: 8 },
 ];
 
-/** The mode index Major sits at. The wheel is a major-key instrument, so this is the default. */
+/** The mode index Major sits at: the default scale, and the one the wheel naming still assumes. */
 export const MODE_MAJOR = 1;
 
 export const scaleByMode = (mode) => SCALES[clampInt(mode, 0, SCALES.length - 1)];
@@ -491,24 +525,24 @@ function seventhSuffix(third, fifth, seventh) {
 }
 
 /**
- * The letter name of a chord's root, spelled the way the key spells it.
+ * The letter name of a chord's root, spelled the way its key and scale spell it.
  *
- * Only a major scale gets a letter. The wheel's names are the seven chords of a *major* key, so
- * reading them against any other scale prints the wrong root: in C natural minor the third degree
- * is E flat, and the wheel would have called it E. Spelling an arbitrary mode correctly needs a
- * real spelling engine, which SpaceAge does not have either - its wheel is a major-key
- * instrument. Every other scale gets its roman numeral, which is always true.
+ * **Every scale gets a letter**, not only the major ones. An earlier version of this comment said
+ * the opposite - that spelling an arbitrary mode needs an engine "which SpaceAge does not have
+ * either" - and that was simply wrong: `spelledScaleDegreeName` in PluginEditor.cpp is exactly
+ * that engine, and `degreeSpelling` above is a port of it. The mistake cost the exotic scales
+ * their note names for a while; they were labelled with roman numerals alone, which tells a
+ * player the function of a chord but not what to put their hands on.
  */
-function rootLetter(keyPosition, mode, c) {
-  const scale = scaleByMode(mode);
-  const isMajor = scale.count === 7 && MAJOR_REFERENCE.every((v, i) => scale.intervals[i] === v);
-  if (isMajor && c.degree < 7 && c.rootOffsetSemitones === 0) {
-    // The wheel already spells all seven degrees of a major key. Its names carry the quality of
-    // the plain triad ("Am", "B" + the degree sign), so strip that off: the caller states the
-    // quality that is actually played, and "AmMaj7" would be a lie about what sounds.
-    return { text: chordName(keyPosition, c.degree).replace(/m$/, "").replace(DIMINISHED, ""), isLetter: true };
+function rootLetter(keyPosition, mode, c, preferFlats) {
+  const key = wrap(keyPosition);
+  const flats = preferFlats ?? usesFlats(key);
+  // A borrowed chord is not on a degree of the scale any more, so there is no letter it is owed.
+  // Name it for the pitch it actually lands on and say so plainly.
+  if (c.rootOffsetSemitones !== 0) {
+    return { text: pitchClassName(degreeRootPitchClass(pitchClassAt(key), mode, c.degree, c.rootOffsetSemitones), flats), isLetter: true };
   }
-  return { text: romanNumeralForScaleDegree(mode, c.degree), isLetter: false };
+  return { text: degreeSpelling(pitchClassAt(key), mode, c.degree, flats), isLetter: true };
 }
 
 /**
@@ -519,14 +553,11 @@ function rootLetter(keyPosition, mode, c) {
  * chord actually sounds. Taking the formula's own suffix instead would print "A7" for the seventh
  * chord on vi in C, which is a real chord and the wrong one: it is Am7.
  */
-export function chordLabel(chord, { keyPosition = 0, mode = MODE_MAJOR } = {}) {
+export function chordLabel(chord, { keyPosition = 0, mode = MODE_MAJOR, preferFlats } = {}) {
   const c = sanitizeChord(chord);
   const formula = qualityByIndex(c.quality);
-  const { text, isLetter } = rootLetter(keyPosition, mode, c);
+  const { text } = rootLetter(keyPosition, mode, c, preferFlats);
   if (!formula.scaleRelative) return text + formula.suffix;
-  // A roman numeral already states the triad quality - lower case is minor, the degree sign is
-  // diminished - so adding a suffix would say it twice: "im", "ii" with two degree signs.
-  if (!isLetter) return text + (formula.count >= 4 ? formula.suffix : "");
 
   const root = degreeRootPitchClass(0, mode, c.degree, c.rootOffsetSemitones);
   const above = (i) => (chordVoicePitchClass(0, mode, c.degree, c.quality, i, c.rootOffsetSemitones) - root + 12) % 12;

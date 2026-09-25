@@ -105,6 +105,13 @@ be compared field by field:
 `chordMidiNotes(chord, { keyRoot, mode })` turns one into sorted MIDI notes between 24 and 96,
 which is SpaceAge's range and is kept so that the same chord gives the same notes in both.
 
+`degreeSpelling(keyRoot, mode, degree, preferFlats)` names a degree: a letter, and whatever
+accidental puts that letter on the right pitch. It works for every seven-note scale, because a
+seven-note scale uses each of the seven letters once in order from the tonic whatever its
+intervals are. Scales of other lengths have no such letter and fall back to a chromatic name,
+which is why a progression carries `preferFlats` - `null` for "however the key spells itself",
+or an explicit choice for the scales where the key is not a good enough answer.
+
 SpaceAge's `ChordClip` carries a great deal more — rhythm, arpeggiation, strum, pan, gain, pads.
 The list of what OWL ignores and why is at the top of `harmony.js`, in code, because a chord type
 that was quietly reduced once already cost SpaceAge a round of edits that fell on the floor.
@@ -114,9 +121,10 @@ that was quietly reduced once already cost SpaceAge a round of edits that fell o
 A pattern carries one, and a step points into it by index:
 
 ```js
-harmony: { keyPosition: 0,   // 0..11 on the circle of fifths; 0 is C, 7 is D flat
-           mode: 1,          // index into SCALES; 1 is Major
-           chords: [ ... ] } // up to 8, SpaceAge's WheelModel::maxSequence
+harmony: { keyPosition: 0,    // 0..11 on the circle of fifths; 0 is C, 7 is D flat
+           mode: 1,           // index into SCALES; 1 is Major
+           preferFlats: null, // null = however the key spells itself; true or false overrides it
+           chords: [ ... ] }  // up to 8, SpaceAge's WheelModel::maxSequence
 steps: [ { note, vel, tie, chord } ]   // chord is an index into harmony.chords, or null
 ```
 

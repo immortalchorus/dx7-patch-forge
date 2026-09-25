@@ -52,7 +52,7 @@ export function honeycombSize(count, width) {
  * pointer landed. The cells are their own hit targets, which is the whole reason this needs no
  * hit test the way the JUCE original does.
  */
-export function honeycombSvg(keyPosition, mode = MODE_MAJOR, { width = 96, selected = null, pad = 6 } = {}) {
+export function honeycombSvg(keyPosition, mode = MODE_MAJOR, { width = 96, selected = null, pad = 6, preferFlats } = {}) {
   const scale = scaleByMode(mode);
   const count = Math.max(1, scale.count);
   let out = "";
@@ -60,7 +60,7 @@ export function honeycombSvg(keyPosition, mode = MODE_MAJOR, { width = 96, selec
   for (let degree = 0; degree < count; degree++) {
     const box = cellBounds(degree, { width, left: pad, top: pad });
     const chord = { ...defaultChord(), degree };
-    const label = chordLabel(chord, { keyPosition, mode });
+    const label = chordLabel(chord, { keyPosition, mode, preferFlats });
     const numeral = romanNumeralForScaleDegree(mode, degree);
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;

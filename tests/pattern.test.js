@@ -30,7 +30,7 @@ test("a pattern is forced into shape whatever it was loaded from", () => {
   const p = sanitizePattern({ bpm: 9000, division: "nonsense", gate: 5, steps: [{ note: 300, vel: -4, tie: 1 }] });
   assert.equal(p.bpm, 240);
   assert.equal(p.division, "1/8");
-  assert.deepEqual(p.harmony, { keyPosition: 0, mode: 1, chords: [] });
+  assert.deepEqual(p.harmony, { keyPosition: 0, mode: 1, preferFlats: null, chords: [] });
   assert.equal(p.gate, 1);
   assert.equal(p.steps.length, STEPS);
   assert.deepEqual(p.steps[0], { note: 127, vel: 1, tie: true, chord: null });

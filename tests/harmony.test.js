@@ -29,6 +29,7 @@ import {
   SCALES, QUALITIES, QUALITY_MAX, MODE_MAJOR, scaleModeNamed,
   romanNumeralForScaleDegree, scaleDegreeQualitySuffix,
   applyChordVoicing, chordMidiNotes, sanitizeChord, defaultChord, chordLabel,
+  degreeSpelling, pitchClassName,
 } from "../dist/js/harmony.js";
 
 const MAJOR_SCALE_SEMITONES = [0, 2, 4, 5, 7, 9, 11];
@@ -616,18 +617,80 @@ test("a scale-relative chord is named for what it sounds, not for its formula", 
   assert.equal(inC(5, 6), "Amin7");
 });
 
-test("only a major key is named with letters; every other scale gets its numeral", () => {
-  // The wheel spells the seven chords of a major key. Read against any other scale its letters
-  // are wrong - in C natural minor the third degree is E flat and the wheel would call it E - so
-  // those scales are named by numeral, which is always true.
-  const minor = [0, 1, 2, 3, 4, 5, 6].map((d) => chordLabel({ degree: d, quality: 0 }, { keyPosition: 0, mode: scaleModeNamed("Natural Minor") }));
-  assert.deepEqual(minor, ["i", "ii" + DIMINISHED, "III", "iv", "v", "VI", "VII"]);
-  // A numeral already states the triad quality, so it is not stated twice: not "im", not "ii°°".
-  for (const label of minor) {
-    assert.ok(!/m$/.test(label), `${label} says minor twice`);
-    assert.ok((label.match(new RegExp(DIMINISHED, "g")) || []).length <= 1, `${label} says diminished twice`);
+test("every scale is named with letters, not only the major ones", () => {
+  // This replaced a rule that said the opposite. The wheel could only spell a major key, so every
+  // other scale was labelled with its roman numeral and the player never saw a note name.
+  //
+  // A seven-note scale uses each of the seven letters once, in order from the tonic, whatever its
+  // intervals are - that is what a seven-note scale *is* - so the same derivation spells all of
+  // them. The numeral is still shown beside the name rather than instead of it.
+  const named = (name, keyPosition, preferFlats) => {
+    const mode = scaleModeNamed(name);
+    return [...Array(SCALES[mode].count)].map((_, d) =>
+      chordLabel({ degree: d, quality: 0 }, { keyPosition, mode, preferFlats }),
+    );
+  };
+  assert.deepEqual(named("Natural Minor", 0), ["Cm", "D" + DIMINISHED, "E" + FLAT, "Fm", "Gm", "A" + FLAT, "B" + FLAT]);
+  assert.deepEqual(named("Dorian", 0), ["Cm", "Dm", "E" + FLAT, "F", "Gm", "A" + DIMINISHED, "B" + FLAT]);
+  assert.deepEqual(named("Harmonic Minor", 0), ["Cm", "D" + DIMINISHED, "E" + FLAT + "aug", "Fm", "G", "A" + FLAT, "B" + DIMINISHED]);
+
+  // The case the SpaceAge brief names outright: E Phrygian Dominant is E, F, G#dim, Am, Bdim,
+  // Caug, Dm. That sentence is in their document, so it is an independent check of this port.
+  assert.deepEqual(
+    named("Phrygian Dominant", positionOfPitchClass(4)),
+    ["E", "F", "G" + SHARP + DIMINISHED, "Am", "B" + DIMINISHED, "Caug", "Dm"],
+  );
+});
+
+test("every seven-note scale spells its seven letters once each, in every key", () => {
+  // The same property the major keys are held to, swept across every seven-note scale and all
+  // twelve keys: a letter per degree, in order from the tonic, each on the right pitch.
+  const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+  const naturals = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  for (let mode = 0; mode < SCALES.length; mode++) {
+    if (SCALES[mode].count !== 7) continue;
+    for (let keyPosition = 0; keyPosition < 12; keyPosition++) {
+      const root = pitchClassAt(keyPosition);
+      const used = [];
+      for (let degree = 0; degree < 7; degree++) {
+        const printed = degreeSpelling(root, mode, degree, usesFlats(keyPosition));
+        const sharps = (printed.match(new RegExp(SHARP, "g")) || []).length;
+        const flats = (printed.match(new RegExp(FLAT, "g")) || []).length;
+        assert.ok(LETTERS.includes(printed[0]), `${SCALES[mode].name}: ${printed}`);
+        assert.equal(
+          (naturals[printed[0]] + sharps - flats + 120) % 12,
+          (root + SCALES[mode].intervals[degree]) % 12,
+          `${SCALES[mode].name} in key ${keyPosition}, degree ${degree}: ${printed} is the wrong pitch`,
+        );
+        used.push(printed[0]);
+      }
+      assert.equal(new Set(used).size, 7, `${SCALES[mode].name} in key ${keyPosition} reuses a letter: ${used.join(" ")}`);
+    }
   }
-  // Dorian's sharpened sixth keeps its accidental in the numeral.
-  const dorian = chordLabel({ degree: 5, quality: 0 }, { keyPosition: 0, mode: scaleModeNamed("Dorian") });
-  assert.equal(dorian, "#vi" + DIMINISHED);
+});
+
+test("a scale that is not seven notes gets a plain name, and can be told how to spell it", () => {
+  // A five- or six-note scale has no letter per degree to be owed, so there is no derivation to
+  // do and it falls back to a chromatic name. The key decides sharps or flats, and for these
+  // scales the key can be wrong: every player alive spells C minor pentatonic with an E flat,
+  // but the key of C spells itself with sharps. That is why the spelling can be overridden.
+  const pent = scaleModeNamed("Minor Pentatonic");
+  const named = (preferFlats) =>
+    [...Array(5)].map((_, d) => chordLabel({ degree: d, quality: 0 }, { keyPosition: 0, mode: pent, preferFlats }));
+  assert.deepEqual(named(false), ["C", "D" + SHARP, "F", "G", "A" + SHARP]);
+  assert.deepEqual(named(true), ["C", "E" + FLAT, "F", "G", "B" + FLAT]);
+  // Whichever way it is spelled, it is the same chord: spelling is a name, never a pitch.
+  for (let degree = 0; degree < 5; degree++) {
+    assert.deepEqual(
+      chordMidiNotes({ degree, quality: 0 }, { keyRoot: 0, mode: pent }),
+      chordMidiNotes({ degree, quality: 0 }, { keyRoot: 0, mode: pent }),
+    );
+  }
+  // The override reaches seven-note scales too, where it picks which enharmonic tonic to spell
+  // from: the same six sharps become six flats.
+  const sharpKey = [...Array(7)].map((_, d) => chordLabel({ degree: d, quality: 0 }, { keyPosition: 6, mode: MODE_MAJOR, preferFlats: false }));
+  const flatKey = [...Array(7)].map((_, d) => chordLabel({ degree: d, quality: 0 }, { keyPosition: 6, mode: MODE_MAJOR, preferFlats: true }));
+  assert.equal(sharpKey[0], "F" + SHARP);
+  assert.equal(flatKey[0], "G" + FLAT);
+  assert.notDeepEqual(sharpKey, flatKey);
 });
