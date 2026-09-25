@@ -632,7 +632,19 @@ function applyReverb({ rebuild = true } = {}) {
 
 // Monitoring level. The meter reads the engine before this, so turning it down cannot hide
 // a patch that clips where it counts.
-let volumeDb = sanitizeVolume(localStorage.getItem("owl.volume") ?? DEFAULT_DB);
+//
+// It always opens at DEFAULT_DB and is deliberately *not* remembered between visits, unlike the
+// octave, the reverb and the loop. Those are choices about the work; this is a choice about the
+// room you are in, and carrying it across sessions means a level set quiet for headphones late
+// one night is still there on speakers the next morning - or worse, the other way round. A known
+// starting level every time is the safer promise, and the control is one drag away.
+let volumeDb = DEFAULT_DB;
+try {
+  // Left behind by the versions that did remember it.
+  localStorage.removeItem("owl.volume");
+} catch {
+  // Storage blocked; there is nothing stale to clear.
+}
 function applyVolume() {
   const g = verb.nodes?.master?.gain;
   if (!g) return;
@@ -646,11 +658,6 @@ function drawVolume() {
 }
 $("#volume").oninput = (e) => {
   volumeDb = sanitizeVolume(e.target.value);
-  try {
-    localStorage.setItem("owl.volume", String(volumeDb));
-  } catch {
-    // Storage blocked; the level still applies for this session.
-  }
   applyVolume();
   drawVolume();
 };
