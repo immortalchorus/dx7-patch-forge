@@ -6,7 +6,7 @@ import { MidiLink } from "./midi.js";
 import { algorithmSvg, CHART_HEIGHT, chartHeight, ALGORITHM_LAYOUT } from "./algorithm-chart.js";
 import { interchangeableWith } from "./layers.js";
 import { createClassicEditor } from "./classic.js";
-import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot, placeChord } from "./pattern.js";
+import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, presetById, MAX_CHORDS, stepChordNotes, harmonyKeyRoot, placeChord, stepChord, progressionChords } from "./pattern.js";
 import { honeycombSvg, honeycombSize } from "./chord-honeycomb.js";
 import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral } from "./harmony.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
@@ -546,7 +546,7 @@ function shiftOctave(delta) {
   if (!moved) {
     // A progression can also be what refuses: its chords move by whole octaves and SpaceAge
     // clamps that to three either way, so say which of the two is in the way.
-    $("#loopHint").textContent = loop.pattern.harmony.chords.length
+    $("#loopHint").textContent = progressionChords(loop.pattern).length
       ? "The loop cannot move any further: a note or a chord would run off the keyboard."
       : "The pattern cannot move any further without running off the keyboard.";
     return;
@@ -786,19 +786,24 @@ function drawRoll() {
  */
 function drawChordLane() {
   const p = loop.pattern;
-  const chords = p.harmony.chords;
-  $(".lane-chord").hidden = !chords.length;
-  if (!chords.length) return;
+  const any = progressionChords(p).length > 0;
+  $(".lane-chord").hidden = !any;
+  if (!any) return;
+  const selected = stepChord(p, lab.selected);
   $("#chordLane").innerHTML =
     `<i class="lane-label">CHORD</i>` +
     p.steps
       .map((s, i) => {
         const on = s.chord != null;
-        const label = on ? chordLabel(chords[s.chord], { keyPosition: p.harmony.keyPosition, mode: p.harmony.mode }) : "";
-        const title = on
-          ? `Step ${i + 1} plays ${label}. Click for the next chord.`
-          : `Step ${i + 1} plays its own note. Click to put a chord on it.`;
-        return `<button class="cstep${on ? " on" : ""}${on && s.chord === lab.selected ? " sel" : ""}" data-i="${i}"
+        const label = on ? labelFor(s.chord) : "";
+        const title = !on
+          ? selected
+            ? `Step ${i + 1} plays its own note. Click to repeat ${labelFor(selected)} here, as its own chord.`
+            : `Step ${i + 1} plays its own note. Click to put a chord on it.`
+          : i === lab.selected
+            ? `Step ${i + 1} plays ${label}, and is selected. Click to take it off.`
+            : `Step ${i + 1} plays ${label}. Click to select it.`;
+        return `<button class="cstep${on ? " on" : ""}${i === lab.selected ? " sel" : ""}" data-i="${i}"
           title="${esc(title)}" aria-label="${esc(title)}">${esc(label)}</button>`;
       })
       .join("");
@@ -905,9 +910,13 @@ addEventListener("keydown", (e) => {
 });
 
 // ---------------------------------------------------------------- chord lab
-// Picking chords from a circle of fifths and hearing a patch through them. The musical model is
-// harmony.js, ported from SpaceAge; the honeycomb is chord-honeycomb.js. This is only the wiring: which
-// chord is selected, and what each control does to it.
+// Picking chords from a honeycomb and hearing a patch through them. The musical model is
+// harmony.js, ported from SpaceAge; the honeycomb is chord-honeycomb.js. This is only the wiring:
+// which chord is selected, and what each control does to it.
+//
+// `lab.selected` is a **step index**, not a position in a list. Each step owns its chord, so
+// selecting a chord means selecting the step it sits on, and two steps showing the same chord are
+// two chords that happen to match rather than one chord heard twice.
 //
 // The point of this in a patch designer, as against a sequencer, is the measurement at the end:
 // four stacked carriers clip where one does not, and until now nothing in OWL could say so.
@@ -921,7 +930,17 @@ const notesOf = (chord) => chordMidiNotes(chord, { keyRoot: harmonyKeyRoot(harmo
 function editHarmony(change) {
   change(loop.pattern.harmony);
   loop.pattern = sanitizePattern(loop.pattern);
-  if (lab.selected != null && lab.selected >= loop.pattern.harmony.chords.length) lab.selected = null;
+  if (lab.selected != null && stepChord(loop.pattern, lab.selected) == null) lab.selected = null;
+  pushPattern();
+  drawChordLab();
+  drawRoll();
+}
+
+/** Edit the chord on a step, leaving every other chord alone even if it matches. */
+function editStepChord(step, change) {
+  if (step == null || stepChord(loop.pattern, step) == null) return;
+  change(loop.pattern.steps[step].chord);
+  loop.pattern = sanitizePattern(loop.pattern);
   pushPattern();
   drawChordLab();
   drawRoll();
@@ -958,7 +977,7 @@ function drawHoneycomb(h) {
     width: CELL,
     pad: PAD,
     preferFlats: h.preferFlats,
-    selected: lab.selected == null ? null : h.chords[lab.selected]?.degree,
+    selected: stepChord(loop.pattern, lab.selected)?.degree ?? null,
   });
 }
 
@@ -970,19 +989,20 @@ function drawChordLab() {
   $("#clKeySig").textContent = h.mode === MODE_MAJOR ? keySignature(h.keyPosition) : SCALES[h.mode].name;
   drawHoneycomb(h);
 
-  $("#clProgression").innerHTML = h.chords.length
-    ? h.chords
+  const progression = progressionChords(loop.pattern);
+  $("#clProgression").innerHTML = progression.length
+    ? progression
         .map(
-          (c, i) => `<span class="chl-chip${i === lab.selected ? " sel" : ""}">
-            <button class="chl-pick" data-i="${i}" title="Edit and hear ${esc(labelFor(c))}">${esc(labelFor(c))}<em>${esc(degreeNumeral(c.degree))}</em></button>
-            <button class="chl-drop" data-drop="${i}" aria-label="Remove ${esc(labelFor(c))}" title="Remove ${esc(labelFor(c))}">&times;</button>
+          ({ step, chord: c }) => `<span class="chl-chip${step === lab.selected ? " sel" : ""}">
+            <button class="chl-pick" data-i="${step}" title="Edit and hear ${esc(labelFor(c))}, on step ${step + 1}">${esc(labelFor(c))}<em>${esc(degreeNumeral(c.degree))}</em></button>
+            <button class="chl-drop" data-drop="${step}" aria-label="Remove ${esc(labelFor(c))}" title="Remove ${esc(labelFor(c))} from step ${step + 1}">&times;</button>
           </span>`,
         )
         .join("")
     : `<p class="chl-empty">No chords yet. Click a hexagon above.</p>`;
-  $("#clProgNote").textContent = h.chords.length ? `${h.chords.length} of ${MAX_CHORDS}` : "—";
+  $("#clProgNote").textContent = progression.length ? `${progression.length} of ${MAX_CHORDS}` : "—";
 
-  const chord = lab.selected == null ? null : h.chords[lab.selected];
+  const chord = stepChord(loop.pattern, lab.selected);
   $("#clEditorBlock").hidden = !chord;
   if (chord) {
     $("#clChordName").textContent = labelFor(chord);
@@ -1009,44 +1029,38 @@ $("#clHoneycomb").addEventListener("keydown", (e) => {
 
 function addFromHoneycomb(seg) {
   if (!seg) return;
-  const degree = +seg.dataset.degree;
-  const h = harmonyOf();
-  if (h.chords.length >= MAX_CHORDS) {
-    $("#clProgNote").textContent = `full at ${MAX_CHORDS}`;
+  addChord({ ...defaultChord(), degree: +seg.dataset.degree });
+}
+
+/**
+ * Put a chord on the next free step and select it. A chord that is not on a step cannot be heard,
+ * which is what made the honeycomb look broken: you clicked four chords, pressed play, and the
+ * loop played whatever it played before.
+ */
+function addChord(chord) {
+  const wasEmpty = loop.pattern.steps.map((s) => s.chord == null);
+  const placed = placeChord(loop.pattern, chord);
+  if (placed === loop.pattern) {
+    $("#clProgNote").textContent =
+      progressionChords(loop.pattern).length >= MAX_CHORDS ? `full at ${MAX_CHORDS}` : "no free step";
     return;
   }
-  // A chord goes into the progression *and* onto a step. A chord that is only in the list cannot
-  // be heard, which makes the honeycomb look broken: you click four chords, press play, and the
-  // loop plays whatever it played before.
-  const index = h.chords.length;
-  loop.pattern.harmony.chords = [...h.chords, { ...defaultChord(), degree }];
-  const placed = placeChord(loop.pattern, index);
-  const found = placed !== loop.pattern;
+  // The step it landed on is the one that was empty before and is not now.
+  lab.selected = placed.steps.findIndex((s, i) => wasEmpty[i] && s.chord != null);
   loop.pattern = sanitizePattern(placed);
-  lab.selected = index;
   $("#loopPreset").value = "";
   pushPattern();
   drawChordLab();
   drawRoll();
-  if (!found) $("#clProgNote").textContent = "added, but every step already has a chord";
   auditionSelected();
 }
 
 $("#clProgression").addEventListener("click", (e) => {
   const drop = e.target.closest("[data-drop]");
   if (drop) {
-    const at = +drop.dataset.drop;
-    // Removing a chord renumbers the ones after it, so the steps that pointed at them have to
-    // follow. Leaving them to the sanitiser would silently clear every step past the deleted one.
-    editHarmony((harmony) => {
-      harmony.chords = harmony.chords.filter((_, i) => i !== at);
-      for (const s of loop.pattern.steps) {
-        if (s.chord == null) continue;
-        if (s.chord === at) s.chord = null;
-        else if (s.chord > at) s.chord -= 1;
-      }
-      lab.selected = null;
-    });
+    // The chord lives on its step, so removing it is a local edit: no list to renumber and no
+    // other step to disturb.
+    removeChordAt(+drop.dataset.drop);
     return;
   }
   const pick = e.target.closest("[data-i]");
@@ -1056,9 +1070,18 @@ $("#clProgression").addEventListener("click", (e) => {
   auditionSelected();
 });
 
+function removeChordAt(step) {
+  if (stepChord(loop.pattern, step) == null) return;
+  editPattern((pat) => {
+    pat.steps[step].chord = null;
+    if (lab.selected === step) lab.selected = null;
+  });
+  drawChordLab();
+}
+
 const editSelected = (change) => {
   if (lab.selected == null) return;
-  editHarmony((harmony) => change(harmony.chords[lab.selected]));
+  editStepChord(lab.selected, change);
   auditionSelected();
 };
 $("#clQuality").onchange = (e) => editSelected((c) => (c.quality = +e.target.value));
@@ -1072,8 +1095,7 @@ $("#clSpelling").onchange = (e) =>
 
 /** Play the selected chord once, so an edit is heard as it is made. */
 async function auditionSelected() {
-  const h = harmonyOf();
-  const chord = lab.selected == null ? null : h.chords[lab.selected];
+  const chord = stepChord(loop.pattern, lab.selected);
   if (!chord || loop.playing) return;
   const notes = notesOf(chord);
   try {
@@ -1086,25 +1108,51 @@ async function auditionSelected() {
 }
 
 // ---- the chord row: click a step to move it through the progression and back to none
+// The chord row: click an empty step to repeat the selected chord there, click another step's
+// chord to select it, and click the selected one again to take it off. Repeating puts a *copy* on
+// the step, so the two can be voiced differently afterwards - they are two chords that match, not
+// one chord heard twice.
 $("#chordLane").addEventListener("click", (e) => {
   const b = e.target.closest(".cstep");
   if (!b) return;
   const i = +b.dataset.i;
-  const count = harmonyOf().chords.length;
-  if (!count) return;
-  editPattern((p) => {
-    const at = p.steps[i].chord;
-    p.steps[i].chord = at == null ? 0 : at + 1 >= count ? null : at + 1;
-  });
+  const here = stepChord(loop.pattern, i);
+  if (here == null) {
+    const source = stepChord(loop.pattern, lab.selected) ?? { ...defaultChord() };
+    placeChordOn(i, source);
+    return;
+  }
+  if (lab.selected !== i) {
+    lab.selected = i;
+    drawChordLab();
+    auditionSelected();
+    return;
+  }
+  removeChordAt(i);
 });
+
+/** Put a copy of a chord on one named step. */
+function placeChordOn(step, chord) {
+  if (progressionChords(loop.pattern).length >= MAX_CHORDS) {
+    $("#clProgNote").textContent = `full at ${MAX_CHORDS}`;
+    return;
+  }
+  editPattern((pat) => {
+    pat.steps[step].chord = { ...chord };
+    pat.steps[step].tie = false;
+    lab.selected = step;
+  });
+  drawChordLab();
+  auditionSelected();
+}
 
 // ---- the measurement, which is the reason this is in a patch designer at all
 $("#clMeasure").onclick = () => measureProgression();
 
 function measureProgression() {
   const voice = currentVoice();
-  const h = harmonyOf();
-  if (!voice || !h.chords.length || lab.measuring) return;
+  const progression = progressionChords(loop.pattern);
+  if (!voice || !progression.length || lab.measuring) return;
   lab.measuring = true;
   $("#clMeasure").disabled = true;
   $("#clMeasure").textContent = "Measuring…";
@@ -1112,7 +1160,7 @@ function measureProgression() {
   setTimeout(async () => {
     try {
       const { chordPeak } = await import("./features.js");
-      const rows = h.chords.map((c) => ({ label: labelFor(c), notes: notesOf(c), ...chordPeak(voice, notesOf(c)) }));
+      const rows = progression.map(({ chord: c }) => ({ label: labelFor(c), notes: notesOf(c), ...chordPeak(voice, notesOf(c)) }));
       const single = chordPeak(voice, [60]);
       $("#clMeasureTable").innerHTML =
         `<tr><th>Chord</th><th>Notes</th><th>Peak</th><th>Stacking</th></tr>` +

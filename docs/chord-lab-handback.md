@@ -306,3 +306,27 @@ to spell from: F♯ major's six sharps become G♭ major's six flats.
 
 Spelling is a name and never a pitch. The same chord sounds identically however it is spelled,
 and that is asserted too.
+
+## 10. Each placed chord owns its settings
+
+A design mistake, found by the Admiral and fixed. OWL held the progression as a list of chord
+records on the harmony, with each step carrying an *index* into that list. Two steps showing the
+same chord were therefore one chord heard twice, and editing either changed both.
+
+That is not what a progression is. A I–V–I wants two tonic chords that can be voiced differently,
+not one chord that appears twice. And SpaceAge already says so: `FIFTHS_HANDOVER` asserts
+`slotsKeepTheirOwnSettings` and `editingOneSlotSparesTheRest` about its own sketch slots, which is
+exactly the property OWL had broken. The port had diverged on a point their gate already covered —
+worth noting, because it is the second time reading those gate names has corrected this side.
+
+**Each step now owns its chord record outright.** `harmony` keeps the key, the scale and the
+spelling; the chords live on the steps. The progression is derived by `progressionChords(pattern)`
+— the chords on the steps, in playing order — so the list and what sounds cannot disagree.
+Repeating a chord copies it.
+
+Saved patterns are migrated: an old index is resolved into its own copy, so a repeated chord
+becomes two independent chords rather than being lost or staying linked.
+
+The chord row's click changed with it, since cycling through a shared list no longer means
+anything. An empty step repeats the selected chord as its own copy; another step's chord selects
+it; the selected one again takes it off.

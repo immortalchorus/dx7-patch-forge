@@ -103,8 +103,10 @@ export const PRESETS = [
       ...defaultPattern(),
       bpm: 60,
       division: "1/4",
-      harmony: { keyPosition: 0, mode: MODE_MAJOR, chords: [{ ...defaultChord(), quality: 5 }] },
-      steps: Array.from({ length: STEPS }, (_, i) => (i % 8 === 0 ? step(null, 90, false, 0) : step(null, 90, true))),
+      harmony: { keyPosition: 0, mode: MODE_MAJOR, preferFlats: null },
+      steps: Array.from({ length: STEPS }, (_, i) =>
+        i % 8 === 0 ? step(null, 90, false, { ...defaultChord(), quality: 5 }) : step(null, 90, true),
+      ),
     }),
   },
   {
@@ -115,15 +117,13 @@ export const PRESETS = [
       ...defaultPattern(),
       bpm: 100,
       division: "1/4",
-      harmony: {
-        keyPosition: 0,
-        mode: MODE_MAJOR,
-        // Quality 1 is the scale-relative 7th, so each degree gets the seventh chord the key
-        // itself builds there rather than the same shape transposed.
-        chords: [0, 4, 5, 3].map((degree) => ({ ...defaultChord(), degree, quality: 1 })),
-      },
+      harmony: { keyPosition: 0, mode: MODE_MAJOR, preferFlats: null },
+      // Quality 1 is the scale-relative 7th, so each degree gets the seventh chord the key itself
+      // builds there rather than the same shape transposed.
       steps: Array.from({ length: STEPS }, (_, i) =>
-        i % 4 === 0 ? step(null, 96, false, (i / 4) % 4) : step(null, 96, true),
+        i % 4 === 0
+          ? step(null, 96, false, { ...defaultChord(), degree: [0, 4, 5, 3][(i / 4) % 4], quality: 1 })
+          : step(null, 96, true),
       ),
     }),
   },
@@ -146,12 +146,12 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, Math.round(n)));
 
 /** Force a progression into legal shape, whatever it was loaded from. */
 export function sanitizeHarmony(h) {
-  const list = Array.isArray(h?.chords) ? h.chords.slice(0, MAX_CHORDS) : [];
+  // The key, the scale and how they are spelled. The chords are not here: each one lives on the
+  // step that plays it, so that two steps showing the same chord are two chords, not one.
   return {
     keyPosition: wrap(Number.isFinite(+h?.keyPosition) ? +h.keyPosition : 0),
     mode: clamp(h?.mode ?? MODE_MAJOR, 0, 49),
     preferFlats: h?.preferFlats == null ? null : !!h.preferFlats,
-    chords: list.map(sanitizeChord),
   };
 }
 
@@ -159,13 +159,22 @@ export function sanitizeHarmony(h) {
 export function sanitizePattern(p) {
   const base = defaultPattern();
   const harmony = sanitizeHarmony(p?.harmony);
+  // A chord used to be an index into a list on the harmony, which meant two steps showing the
+  // same chord were one chord heard twice: editing either changed both, which is not what a
+  // progression is. Each step owns its chord outright now. An older saved pattern is migrated by
+  // resolving its indices into copies, so a repeated chord becomes two independent ones rather
+  // than being lost.
+  const library = Array.isArray(p?.harmony?.chords) ? p.harmony.chords : null;
+  let placed = 0;
   const steps = Array.from({ length: STEPS }, (_, i) => {
     const s = p?.steps?.[i] || {};
     const note = s.note == null ? null : clamp(s.note, 0, 127);
-    // A chord index that names no chord is dropped rather than kept as a dangling reference:
-    // deleting a chord must not leave steps pointing at a hole.
-    const index = s.chord == null ? null : clamp(s.chord, 0, MAX_CHORDS - 1);
-    const chord = index != null && index < harmony.chords.length ? index : null;
+    const raw = typeof s.chord === "number" ? library?.[s.chord] : s.chord;
+    let chord = null;
+    if (raw && typeof raw === "object" && placed < MAX_CHORDS) {
+      chord = sanitizeChord(raw);
+      placed++;
+    }
     return { note, vel: clamp(s.vel ?? 100, 1, 127), tie: !!s.tie, chord };
   });
   return {
@@ -193,11 +202,13 @@ const PLACEMENT_ORDER = [0, 4, 8, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15];
  * a blip, but it never ties over a step that has a note or a chord of its own.
  * Returns the pattern unchanged when every step already carries a chord.
  */
-export function placeChord(pattern, chordIndex) {
+export function placeChord(pattern, chord) {
+  if (progressionChords(pattern).length >= MAX_CHORDS) return pattern;
   const steps = pattern.steps.map((s) => ({ ...s }));
   const at = PLACEMENT_ORDER.find((i) => steps[i].chord == null);
   if (at == null) return pattern;
-  steps[at].chord = chordIndex;
+  // A copy, always. Placing the same chord twice has to give two chords that can be edited apart.
+  steps[at].chord = sanitizeChord(chord);
   steps[at].tie = false;
   for (let i = at + 1; i < steps.length; i++) {
     if (steps[i].chord != null || steps[i].note != null) break;
@@ -207,11 +218,14 @@ export function placeChord(pattern, chordIndex) {
 }
 
 /** The chord record a step plays, or null if it plays its own note instead. */
-export function stepChord(pattern, index) {
-  const at = pattern?.steps?.[index]?.chord;
-  if (at == null) return null;
-  return pattern.harmony?.chords?.[at] ?? null;
-}
+export const stepChord = (pattern, index) => pattern?.steps?.[index]?.chord ?? null;
+
+/**
+ * The progression: every chord on the pattern, in the order it is played, with the step it sits
+ * on. Derived rather than stored, so the list and what the loop sounds cannot disagree.
+ */
+export const progressionChords = (pattern) =>
+  (pattern?.steps ?? []).map((s, step) => ({ step, chord: s.chord })).filter((x) => x.chord != null);
 
 /** The pitch class the progression's key is rooted on. */
 export const harmonyKeyRoot = (harmony) => pitchClassAt(harmony?.keyPosition ?? 0);
@@ -259,17 +273,18 @@ export function stepEvents(pattern, index) {
 export function shiftPattern(pattern, semitones) {
   const notes = pattern.steps.filter((s) => s.note != null);
   if (notes.some((s) => s.note + semitones < 0 || s.note + semitones > 127)) return null;
-  const chords = pattern.harmony?.chords ?? [];
-  let moved = chords;
+  const chords = progressionChords(pattern).map((x) => x.chord);
+  const octaves = semitones / 12;
   if (chords.length) {
     if (semitones % 12 !== 0) return null;
-    const octaves = semitones / 12;
     if (chords.some((c) => Math.abs(c.registerOctaves + octaves) > 3)) return null;
-    moved = chords.map((c) => ({ ...c, registerOctaves: c.registerOctaves + octaves }));
   }
   return {
     ...pattern,
-    harmony: { ...pattern.harmony, chords: moved },
-    steps: pattern.steps.map((s) => (s.note == null ? { ...s } : { ...s, note: s.note + semitones })),
+    steps: pattern.steps.map((s) => ({
+      ...s,
+      note: s.note == null ? null : s.note + semitones,
+      chord: s.chord == null ? null : { ...s.chord, registerOctaves: s.chord.registerOctaves + octaves },
+    })),
   };
 }

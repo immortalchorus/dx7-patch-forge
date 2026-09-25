@@ -123,10 +123,20 @@ A pattern carries one, and a step points into it by index:
 ```js
 harmony: { keyPosition: 0,    // 0..11 on the circle of fifths; 0 is C, 7 is D flat
            mode: 1,           // index into SCALES; 1 is Major
-           preferFlats: null, // null = however the key spells itself; true or false overrides it
-           chords: [ ... ] }  // up to 8, SpaceAge's WheelModel::maxSequence
-steps: [ { note, vel, tie, chord } ]   // chord is an index into harmony.chords, or null
+           preferFlats: null }// null = however the key spells itself; true or false overrides it
+steps: [ { note, vel, tie, chord } ]   // chord is a chord record of its own, or null
 ```
+
+**Each step owns its chord outright.** A chord used to be an index into a list held on the
+harmony, and that made two steps showing the same chord *one* chord heard twice: editing either
+changed both, which is not what a progression is. SpaceAge's own handover gate asserts the
+opposite for its slots - `slotsKeepTheirOwnSettings`, `editingOneSlotSparesTheRest` - and it is
+right. Repeating a chord copies it, so the two can be voiced apart afterwards.
+
+The progression is therefore derived, by `progressionChords(pattern)`, rather than stored: the
+chords on the steps, in the order they are played. A list and a playback order that are stored
+separately can disagree, and this pair cannot. At most `MAX_CHORDS` (8, SpaceAge's
+`WheelModel::maxSequence`) steps may carry one.
 
 A step with a chord plays that chord's notes instead of its own note, because the chord's notes
 are absolute and the step's note would be a second, unrelated thing to hear. Everything else about

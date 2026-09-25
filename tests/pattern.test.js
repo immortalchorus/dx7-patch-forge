@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultPattern, sanitizePattern, stepEvents, stepSeconds, presetById, PRESETS, STEPS, stepChordNotes, MAX_CHORDS } from "../dist/js/pattern.js";
+import { defaultPattern, sanitizePattern, stepEvents, stepSeconds, presetById, PRESETS, STEPS, stepChordNotes, MAX_CHORDS, progressionChords } from "../dist/js/pattern.js";
 import { defaultChord } from "../dist/js/harmony.js";
 import { PreviewEngine } from "../dist/js/preview-engine.js";
 import { LIBRARY } from "../dist/js/designer.js";
@@ -30,7 +30,7 @@ test("a pattern is forced into shape whatever it was loaded from", () => {
   const p = sanitizePattern({ bpm: 9000, division: "nonsense", gate: 5, steps: [{ note: 300, vel: -4, tie: 1 }] });
   assert.equal(p.bpm, 240);
   assert.equal(p.division, "1/8");
-  assert.deepEqual(p.harmony, { keyPosition: 0, mode: 1, preferFlats: null, chords: [] });
+  assert.deepEqual(p.harmony, { keyPosition: 0, mode: 1, preferFlats: null });
   assert.equal(p.gate, 1);
   assert.equal(p.steps.length, STEPS);
   assert.deepEqual(p.steps[0], { note: 127, vel: 1, tie: true, chord: null });
@@ -49,8 +49,7 @@ test("a step with a chord plays the progression instead of its own note", () => 
   // on the step is not heard as well. One step, one thing to listen to.
   const p = sanitizePattern({
     ...defaultPattern(),
-    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
-    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: 0 } : s)),
+    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: { ...defaultChord() } } : s)),
   });
   assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55]);
   assert.deepEqual(stepChordNotes(p, 0), [48, 52, 55]);
@@ -59,18 +58,89 @@ test("a step with a chord plays the progression instead of its own note", () => 
   assert.deepEqual(stepEvents(p, 1).notes, [p.steps[1].note]);
 });
 
-test("a chord index that names no chord is dropped, not left dangling", () => {
-  // Deleting a chord must not leave steps pointing at a hole that would throw when played.
+test("each step owns its chord, so editing one leaves the others alone", () => {
+  // The bug this pins: a chord used to be an index into a list, so two steps showing the same
+  // chord were one chord heard twice and editing either changed both. SpaceAge's own handover
+  // gate asserts the opposite for its slots - slotsKeepTheirOwnSettings, editingOneSlotSparesTheRest.
   const p = sanitizePattern({
     ...defaultPattern(),
-    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
-    steps: defaultPattern().steps.map((s, i) => ({ ...s, chord: i })),
+    steps: defaultPattern().steps.map((s, i) =>
+      i === 0 || i === 8 ? { ...s, chord: { ...defaultChord() } } : s,
+    ),
   });
-  assert.equal(p.steps[0].chord, 0);
-  for (let i = 1; i < STEPS; i++) assert.equal(p.steps[i].chord, null, `step ${i}`);
-  // A progression is capped, and anything past the cap is discarded rather than kept unplayable.
-  const many = sanitizePattern({ ...defaultPattern(), harmony: { chords: Array.from({ length: 40 }, defaultChord) } });
-  assert.equal(many.harmony.chords.length, MAX_CHORDS);
+  assert.deepEqual(stepChordNotes(p, 0), stepChordNotes(p, 8), "they start out the same chord");
+
+  // Voice the first one differently. The second must not move.
+  const edited = sanitizePattern({
+    ...p,
+    steps: p.steps.map((s, i) => (i === 0 ? { ...s, chord: { ...s.chord, inversion: 2, registerOctaves: 1 } } : s)),
+  });
+  assert.deepEqual(stepChordNotes(edited, 0), [67, 72, 76], "the edited chord moves");
+  assert.deepEqual(stepChordNotes(edited, 8), [48, 52, 55], "the other one does not");
+  assert.notDeepEqual(edited.steps[0].chord, edited.steps[8].chord);
+});
+
+test("a progression is read off the steps, in the order it is played", () => {
+  const p = sanitizePattern({
+    ...defaultPattern(),
+    steps: defaultPattern().steps.map((s, i) =>
+      i === 12 || i === 4 ? { ...s, chord: { ...defaultChord(), degree: i === 4 ? 4 : 3 } } : s,
+    ),
+  });
+  const progression = progressionChords(p);
+  assert.deepEqual(progression.map((x) => x.step), [4, 12], "in step order, not insertion order");
+  assert.deepEqual(progression.map((x) => x.chord.degree), [4, 3]);
+  // Removing one is a local edit: nothing else is renumbered or disturbed.
+  const fewer = sanitizePattern({ ...p, steps: p.steps.map((s, i) => (i === 4 ? { ...s, chord: null } : s)) });
+  assert.deepEqual(progressionChords(fewer).map((x) => x.step), [12]);
+  assert.equal(fewer.steps[12].chord.degree, 3, "the surviving chord is untouched");
+});
+
+test("a chord that is not a chord record is dropped, and the progression is capped", () => {
+  // Garbage in the chord slot - a leftover index, a string, a null - must not become something
+  // unplayable. A pattern is loaded from localStorage and can be anything.
+  const junk = sanitizePattern({
+    ...defaultPattern(),
+    steps: defaultPattern().steps.map((s, i) => ({ ...s, chord: [3, "x", null, {}, NaN][i % 5] })),
+  });
+  for (const s of junk.steps) {
+    assert.ok(s.chord === null || typeof s.chord === "object", `bad chord survived: ${JSON.stringify(s.chord)}`);
+    if (s.chord) for (const v of Object.values(s.chord)) assert.ok(Number.isInteger(v));
+  }
+  // Only the empty objects become chords, and never more than the cap.
+  assert.ok(progressionChords(junk).length <= MAX_CHORDS);
+
+  const many = sanitizePattern({
+    ...defaultPattern(),
+    steps: defaultPattern().steps.map((s) => ({ ...s, chord: { ...defaultChord() } })),
+  });
+  assert.equal(progressionChords(many).length, MAX_CHORDS, "a progression holds at most eight chords");
+});
+
+test("an older saved pattern's shared chords become independent ones", () => {
+  // Patterns saved before this carried a chord library on the harmony and an index per step.
+  // Migration resolves each index to its own copy, so a repeated chord survives as two chords
+  // that can now be voiced apart rather than being lost or staying linked.
+  const old = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [{ ...defaultChord(), quality: 5 }, { ...defaultChord(), degree: 4 }] },
+    steps: defaultPattern().steps.map((s, i) => ({ ...s, chord: i === 0 ? 0 : i === 4 ? 1 : i === 8 ? 0 : null })),
+  });
+  const progression = progressionChords(old);
+  assert.deepEqual(progression.map((x) => x.step), [0, 4, 8]);
+  assert.equal(progression[0].chord.quality, 5, "the first chord kept its quality");
+  assert.equal(progression[1].chord.degree, 4, "and the second its degree");
+  assert.deepEqual(progression[2].chord, progression[0].chord, "the repeat has the same settings");
+  assert.notEqual(progression[2].chord, progression[0].chord, "but is a different object");
+  // The harmony no longer carries a chord list at all.
+  assert.equal("chords" in old.harmony, false);
+  // A dangling index, which the old model could produce, resolves to nothing rather than throwing.
+  const dangling = sanitizePattern({
+    ...defaultPattern(),
+    harmony: { keyPosition: 0, mode: 1, chords: [] },
+    steps: defaultPattern().steps.map((s, i) => ({ ...s, chord: i === 0 ? 7 : null })),
+  });
+  assert.equal(dangling.steps[0].chord, null);
 });
 
 test("a chord is held through the tied rests after it, like a note", () => {
@@ -93,7 +163,7 @@ test("every preset is playable and says what it is for", () => {
 
 test("the progression preset walks its four chords in the key it names", () => {
   const p = sanitizePattern(presetById("progression").make());
-  assert.equal(p.harmony.chords.length, 4);
+  assert.equal(progressionChords(p).length, 4);
   // I V vi IV in C, as scale-relative sevenths: CMaj7, G7, Am7, FMaj7.
   assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55, 59]);
   assert.deepEqual(stepEvents(p, 4).notes, [55, 59, 62, 65]);
@@ -160,21 +230,23 @@ test("a progression moves by whole octaves, and refuses anything else", async ()
   const { shiftPattern } = await import("../dist/js/pattern.js");
   const withChords = sanitizePattern({
     ...defaultPattern(),
-    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
-    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: 0 } : s)),
+    steps: defaultPattern().steps.map((s, i) => (i === 0 ? { ...s, chord: { ...defaultChord() } } : s)),
   });
   // An octave up moves the chord's register, which is the field that means exactly this.
   const up = shiftPattern(withChords, 12);
-  assert.equal(up.harmony.chords[0].registerOctaves, 1);
+  assert.equal(up.steps[0].chord.registerOctaves, 1);
   assert.deepEqual(stepChordNotes(sanitizePattern(up), 0), [60, 64, 67]);
   const down = shiftPattern(withChords, -12);
-  assert.equal(down.harmony.chords[0].registerOctaves, -1);
+  assert.equal(down.steps[0].chord.registerOctaves, -1);
   // Anything that is not a whole octave is refused rather than silently rewriting the degrees
   // or changing the key behind the user's back.
   assert.equal(shiftPattern(withChords, 7), null, "a fifth is not an octave");
   assert.equal(shiftPattern(withChords, 1), null, "nor is a semitone");
   // SpaceAge clamps registerOctaves to three either way, so a fourth octave is refused.
-  const high = sanitizePattern({ ...withChords, harmony: { ...withChords.harmony, chords: [{ ...defaultChord(), registerOctaves: 3 }] } });
+  const high = sanitizePattern({
+    ...withChords,
+    steps: withChords.steps.map((s, i) => (i === 0 ? { ...s, chord: { ...defaultChord(), registerOctaves: 3 } } : s)),
+  });
   assert.equal(shiftPattern(high, 12), null, "past three octaves is refused, not clamped");
   assert.ok(shiftPattern(high, -12), "and it can still come back down");
   // With no progression, a pattern still moves by any interval, as it always did.
@@ -189,10 +261,11 @@ test("a chord added to the progression lands on a step, so it can be heard", asy
     ...defaultPattern(),
     steps: Array.from({ length: STEPS }, () => ({ note: null, vel: 100, tie: false, chord: null })),
   });
-  let p = { ...empty, harmony: { ...empty.harmony, chords: [0, 4, 5, 3].map((degree) => ({ ...defaultChord(), degree })) } };
-  for (let i = 0; i < 4; i++) p = sanitizePattern(placeChord(p, i));
+  let p = empty;
+  for (const degree of [0, 4, 5, 3]) p = sanitizePattern(placeChord(p, { ...defaultChord(), degree }));
   // Strong beats first, and each one held through the rests after it.
-  assert.deepEqual(p.steps.map((s) => s.chord), [0, null, null, null, 1, null, null, null, 2, null, null, null, 3, null, null, null]);
+  assert.deepEqual(progressionChords(p).map((x) => x.step), [0, 4, 8, 12]);
+  assert.deepEqual(progressionChords(p).map((x) => x.chord.degree), [0, 4, 5, 3]);
   for (const i of [0, 4, 8, 12]) {
     assert.ok(stepEvents(p, i), `step ${i} should sound`);
     assert.equal(stepEvents(p, i).steps, 4, `step ${i} should be held for four steps`);
@@ -205,9 +278,8 @@ test("placing a chord over a written note keeps the note underneath", async () =
   const { placeChord } = await import("../dist/js/pattern.js");
   const withNotes = sanitizePattern(defaultPattern());
   const written = withNotes.steps[0].note;
-  let p = { ...withNotes, harmony: { ...withNotes.harmony, chords: [defaultChord()] } };
-  p = sanitizePattern(placeChord(p, 0));
-  assert.equal(p.steps[0].chord, 0);
+  const p = sanitizePattern(placeChord(withNotes, { ...defaultChord() }));
+  assert.ok(p.steps[0].chord, "a chord landed on the first strong beat");
   assert.equal(p.steps[0].note, written, "the note is still there");
   assert.deepEqual(stepEvents(p, 0).notes, [48, 52, 55], "but the chord is what sounds");
   // A pattern full of notes has nothing to tie over, so the chord lasts one step.
@@ -221,8 +293,7 @@ test("placing refuses when every step already carries a chord", async () => {
   const { placeChord } = await import("../dist/js/pattern.js");
   const base = sanitizePattern({
     ...defaultPattern(),
-    harmony: { keyPosition: 0, mode: 1, chords: [defaultChord()] },
-    steps: Array.from({ length: STEPS }, () => ({ note: null, vel: 100, tie: false, chord: 0 })),
+    steps: Array.from({ length: STEPS }, () => ({ note: null, vel: 100, tie: false, chord: { ...defaultChord() } })),
   });
-  assert.equal(placeChord(base, 0), base, "the same pattern is handed back, not a broken one");
+  assert.equal(placeChord(base, { ...defaultChord() }), base, "the same pattern is handed back, not a broken one");
 });
