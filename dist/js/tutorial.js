@@ -10,7 +10,8 @@
 // DOM, no globals and no side effects, and can be rendered by a page that has no Chord Lab on it
 // at all.
 //
-// `target` is the id of the control the step is about. Those ids are a contract - the same
+// `target` is the id of the control the step is about, or a list of them when a step is about
+// more than one - Key and Scale are a pair and ringing one of them taught half of it. Those ids are a contract - the same
 // contract `tests/vocabulary.test.js` holds the control vocabulary to - and
 // `tests/tutorial.test.js` asserts every one of them still exists in index.html, so a renamed
 // control fails the suite instead of quietly leaving the tutorial pointing at nothing.
@@ -100,7 +101,7 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: "scales",
-    target: "#clMode",
+    target: ["#clKey", "#clMode"],
     title: "It is not only for major keys",
     body:
       "Key sets the tonic and Scale sets what is built on it. Because the honeycomb is one cell " +
@@ -178,4 +179,5 @@ export const TUTORIAL_STEPS = [
 export const runnableSteps = () => TUTORIAL_STEPS.filter((s) => typeof s.run === "function");
 
 /** Every control the tutorial points at, for a test that checks they all still exist. */
-export const tutorialTargets = () => TUTORIAL_STEPS.map((s) => s.target).filter(Boolean);
+export const tutorialTargets = () =>
+  TUTORIAL_STEPS.flatMap((s) => (Array.isArray(s.target) ? s.target : [s.target])).filter(Boolean);

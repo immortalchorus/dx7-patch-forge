@@ -110,3 +110,71 @@ test("the stylesheet has no at-rule left without its block", () => {
   });
   assert.equal(css.split("{").length, css.split("}").length, "unbalanced braces in styles.css");
 });
+
+/**
+ * The region of `html` occupied by the element carrying `id`, assuming it is a div.
+ * A small depth counter rather than a parser: only `div` tags are counted, which is enough for
+ * this file and fails loudly if the shape it assumes ever stops holding.
+ */
+function divRegion(html, id) {
+  const marker = html.indexOf(`id="${id}"`);
+  assert.ok(marker > 0, `#${id} is not in the page`);
+  const start = html.lastIndexOf("<", marker);
+  assert.ok(html.startsWith("<div", start), `#${id} is not a div; this check assumes it is one`);
+  const tag = /<(\/?)div\b[^>]*?>/g;
+  tag.lastIndex = start;
+  let depth = 0;
+  for (let m; (m = tag.exec(html)); ) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return [start, tag.lastIndex];
+  }
+  throw new Error(`#${id} is never closed`);
+}
+
+test("every control in Chord Lab is one the tutorial points at", () => {
+  // The guard this exists to be. A test cannot notice that a feature shipped without being
+  // taught - it does not know the feature exists - but it can notice that a *control* has
+  // appeared which no step rings. The tutorial fell behind twice before this was here: once for
+  // the controls on the hexagon, once for the MIDI export, and both times a person had to catch
+  // it. Add a control to Chord Lab now and this fails until the tour points at it, or until
+  // someone writes down here why it does not need to.
+  const html = readFileSync(new URL("../dist/index.html", import.meta.url), "utf8");
+  const [from, to] = divRegion(html, "chordLab");
+  const panel = html.slice(from, to);
+
+  const targets = new Set(tutorialTargets().map((t) => t.slice(1)));
+  // The panel as a whole is a target - step one rings it - but that must not count as covering
+  // everything inside it, or the guard would pass by construction and mean nothing.
+  const containers = [...targets].filter((id) => id !== "chordLab" && new RegExp(`<div[^>]*id="${id}"`).test(html));
+  const covers = containers.map((id) => divRegion(html, id));
+
+  // Interactive means something a person operates: a select, a button, a checkbox or a slider.
+  const controls = [...panel.matchAll(/<(select|button|input)\b[^>]*\bid="([^"]+)"/g)].map((m) => ({
+    id: m[2],
+    at: from + m.index,
+  }));
+  assert.ok(controls.length >= 6, `only ${controls.length} controls found; the scan is probably broken`);
+
+  const uncovered = controls.filter(({ id, at }) => {
+    if (targets.has(id)) return false;
+    return !covers.some(([start, end]) => at > start && at < end);
+  });
+  assert.deepEqual(
+    uncovered.map((c) => c.id),
+    [],
+    `Chord Lab controls the tutorial never points at: ${uncovered.map((c) => "#" + c.id).join(", ")}. ` +
+      `Add a step that rings it, add it to an existing step's target list, or say here why it does not need one.`,
+  );
+});
+
+test("the guard would notice a control the tutorial had missed", () => {
+  // A guard that cannot fail is decoration. This performs the failure it is meant to catch,
+  // against the same logic, rather than trusting that it works.
+  const html = readFileSync(new URL("../dist/index.html", import.meta.url), "utf8");
+  const [from, to] = divRegion(html, "chordLab");
+  const withNewControl = html.slice(0, to - 6) + `<select id="clSomethingNew"></select>` + html.slice(to - 6);
+  const [f2, t2] = divRegion(withNewControl, "chordLab");
+  const found = [...withNewControl.slice(f2, t2).matchAll(/<(select|button|input)\b[^>]*\bid="([^"]+)"/g)].map((m) => m[2]);
+  assert.ok(found.includes("clSomethingNew"), "the scan finds a newly added control");
+  assert.ok(!new Set(tutorialTargets().map((t) => t.slice(1))).has("clSomethingNew"), "and it is not a target");
+});

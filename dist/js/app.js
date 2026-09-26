@@ -1317,8 +1317,10 @@ function showTourStep(index) {
     console.warn("A tutorial step could not run.", err);
   }
   clearTourTarget();
-  const target = step.target ? $(step.target) : null;
-  target?.classList.add("tour-target");
+  // A step may name one control or several; the view scrolls to the first of them.
+  const targets = (Array.isArray(step.target) ? step.target : [step.target]).filter(Boolean).map((t) => $(t));
+  for (const el of targets) el?.classList.add("tour-target");
+  const target = targets[0] ?? null;
 
   $("#tourStepOf").textContent = `${index + 1} / ${TUTORIAL_STEPS.length}`;
   $("#tourTitle").textContent = step.title;
