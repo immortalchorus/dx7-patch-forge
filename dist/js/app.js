@@ -10,6 +10,7 @@ import { defaultPattern, sanitizePattern, shiftPattern, PRESETS, DIVISIONS, pres
 import { honeycombSvg, honeycombSize } from "./chord-honeycomb.js";
 import { QUALITIES, VOICINGS, SCALES, MODE_MAJOR, defaultChord, sanitizeChord, chordMidiNotes, chordLabel, majorName, keySignature, degreeNumeral, scaleModeNamed } from "./harmony.js";
 import { TUTORIAL_STEPS } from "./tutorial.js";
+import { progressionMidiFile } from "./midi-file.js";
 import { defaultReverb, sanitizeReverb, impulseResponse, REVERB_PRESETS, presetById as verbPreset } from "./reverb.js";
 import { dbToGain, sanitizeVolume, volumeText, DEFAULT_DB } from "./monitor.js";
 import { noteName } from "./dx7-params.js";
@@ -1349,6 +1350,20 @@ function download(bytes, name, type = "application/octet-stream") {
 const namedVoice = () => ({ ...current().voice, name: patchName() });
 // The file is named after the title, so what you called it and what is inside it agree.
 const stem = () => patchTitle().trim().replace(/[^\w .-]+/g, "").replace(/ +/g, "_") || "FORGE";
+
+// Writing the progression out as a file. Deliberately not behind the MIDI connect: this needs no
+// device at all, and hiding it until one appears would make it invisible to anyone without
+// hardware, which is most people opening a web page.
+$("#midiExport").onclick = () => {
+  const bytes = progressionMidiFile(loop.pattern, { name: patchTitle().trim() || "OWL chord progression" });
+  if (!bytes) {
+    $("#midiStatus").textContent = "No chords to export yet - add some in Chord Lab first.";
+    return;
+  }
+  download(bytes, stem() + "_chords.mid", "audio/midi");
+  const chords = progressionChords(loop.pattern).length;
+  $("#midiStatus").textContent = `Exported ${chords} chord${chords === 1 ? "" : "s"} at ${loop.pattern.bpm} BPM.`;
+};
 
 $("#nativeDownload").onclick = async () => {
   if (!current()) return;

@@ -169,7 +169,7 @@ Chord Lab in OWL **cannot**:
 | Enter a chord by hand rather than from the wheel | `customMidiNotes` was not ported; the wheel is the only input |
 | Write a progression longer than eight chords | SpaceAge's own `maxSequence` |
 | Use the minor numeral pad | The scale selector covers more, but reads as less musical |
-| Send a progression to hardware | `midi.js` can send, but nothing wires a progression to it yet. This is the most valuable missing piece. |
+| Send a progression to hardware, live | `midi.js` can send, but nothing wires a progression to it yet. The progression can now be written out as a `.mid` file (section 12); playing it down a cable to a real DX7 is still the missing piece, and still the more interesting one. |
 
 A chord also **replaces** the note written on its step rather than sounding alongside it, since
 its notes are absolute.
@@ -387,3 +387,30 @@ One bug is worth recording, because these tests caught it on the way in and woul
 back: the per-cell label built a local `chord` that **shadowed** the selected chord passed in as an
 option, so the controls were handed a default and always read root position at octave zero. The
 local is now called `plain`, and the comment on it says why.
+
+## 12. The progression writes out as a MIDI file
+
+`dist/js/midi-file.js` writes the progression as a Standard MIDI File, format 0, one track, 480
+ticks to the quarter. The button is in the MIDI panel and is deliberately **not** behind the
+Connect gating that hides the rest of that panel: writing a file needs no device, and hiding it
+until one appears would make it invisible to anyone without hardware.
+
+**The chords, and only the chords.** The notes written on the roll are bench equipment — a
+velocity ramp, a four-octave sweep — and have no business in a sequencer. A step carrying a chord
+is exported; a step carrying a note is not.
+
+**It is a re-encoding, not a second opinion.** Which notes a chord sounds, and for how long, is
+`stepEvents` — the same answer the loop plays from, including ties and the gate. The export does
+not recalculate any of it. That is what lets `tests/midi-file.test.js` decode the bytes back with
+its own small reader and assert they match `stepEvents` note for note and tick for tick: if the
+file and what you heard ever disagree, the test says so, where a test that only checked the file
+against itself would not notice.
+
+The tempo is written from the loop's own BPM, so it opens at the speed it was heard at rather
+than at a host's default 120, and a time signature is stated so bar lines fall where the loop's
+bars do. A progression with no chords writes **no file at all** rather than an empty one, which
+would look like the export had worked.
+
+This is not a format shared with SpaceAge and needs no agreement with it: SpaceAge exports through
+JUCE's `MidiFile` and a `.mid` is a `.mid`. The notes already agree, because both sides get them
+from the same ported `chordMidiNotes`.
