@@ -249,7 +249,7 @@ The model already carries what borrowing needs — `rootOffsetSemitones`, which 
 its "BORROW" family — and it is sanitised and tested here. It is simply not on the surface. A row
 of borrowed cells under the honeycomb, or a modifier on a cell, would restore it.
 
-### The obvious next step
+### The obvious next step - done, see section 11
 
 SpaceAge carries per-hexagon controls on the shape itself: the body adds the chord, the four
 edges set the inversion, and two discs set the octave (`edgeSetsInversion`, `discRaisesOctave`,
@@ -330,3 +330,60 @@ becomes two independent chords rather than being lost or staying linked.
 The chord row's click changed with it, since cycling through a shared list no longer means
 anything. An empty step repeats the selected chord as its own copy; another step's chord selects
 it; the selected one again takes it off.
+
+## 11. The controls moved onto the hexagons
+
+Section 8 ended by saying that folding SpaceAge's per-hexagon controls onto OWL's cells would make
+the two products feel like one. That is done: four of a cell's six edges set the inversion and two
+discs set the octave, as they do in `NumeralPadComponent`.
+
+**The geometry is ported**, and is now the third piece of that component in OWL, after the stagger
+and the cell shape:
+
+| SpaceAge | OWL |
+| --- | --- |
+| `hexVertex` — six vertices at sixty degrees, radius half the cell's width | `hexVertex(box, index)` |
+| `edgeLine(bounds, slot)` — vertices `2 + slot` to `3 + slot`, four slots clockwise from the lower left | `edgeLine(box, slot)` |
+| `trimToward(edge, centre, 0.13)` — trim to 13–87%, then ease 8.5% toward the centre | `trimmedEdge(box, slot)` |
+| `octaveDisc(bounds, up)` — minus on the left, plus on the right | `octaveDisc(box, up)` |
+| `hitTest` — inside the hexagon first, then the discs, then the edges at a band of 0.13 × width, then the body | `controlAtPoint(x, y, degree, opts)` |
+
+The bottom and lower-right edges are left plain, as they are there. The bottom edge is SpaceAge's
+bars row and OWL has no chord length to put on it; the lower-right is deliberately blank in both,
+because a shape whose every side is a button has no plain side left to steady the eye.
+
+### Where it deliberately differs, and why
+
+**In SpaceAge a pad cell *is* a placed chord**, so every cell holds its own inversion and octave,
+and the gate asserts `degreesHoldDifferentInversions`. In OWL the honeycomb is a **palette**: the
+cells are degrees of the scale, and placed chords live on the steps of the loop (section 10).
+
+So the controls appear on the cell of the **selected chord** and edit that chord — one meaning for
+one control. Giving every cell a per-degree inversion would have raised exactly the question this
+design exists to avoid: when a degree is armed one way and the selected chord on that degree is
+voiced another, which of the two is the edge showing? The OWL analogue of
+`degreesHoldDifferentInversions` is that *placed chords* hold different inversions, which is
+already guaranteed and already tested.
+
+The panel beside the honeycomb is unchanged. It is a second view of the same two fields rather
+than a competing one: both write through `editSelected`, and both read the chord back after every
+change, so they cannot disagree. That is asserted rather than assumed.
+
+### What is tested
+
+`tests/honeycomb-controls.test.js` holds the geometry the way SpaceAge holds its own — a hit test
+taken from the same numbers the drawing uses, because that is the only way to check a shape's
+controls without a screenshot. It asserts that the hexagon is regular, that slot 2 is the top edge
+and slot 0 the lower left, that the drawn mark is shorter than its edge and sits inside it, that
+each edge's midpoint answers with its own slot, that the discs answer before the edges, that the
+centre and the two plain edges still answer "body", and that **a band only counts inside its own
+hexagon** — the property that stops one cell's edge swallowing its neighbour's body.
+
+It also pins the accessibility surface: every control is a button with a label, exactly one
+inversion is `aria-pressed`, and a disc that can go no further is `aria-disabled` and drops out of
+the tab order rather than sitting there looking pressable.
+
+One bug is worth recording, because these tests caught it on the way in and would catch it coming
+back: the per-cell label built a local `chord` that **shadowed** the selected chord passed in as an
+option, so the controls were handed a default and always read root position at octave zero. The
+local is now called `plain`, and the comment on it says why.

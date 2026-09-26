@@ -76,12 +76,15 @@ What was ported, and from where:
 | Roman numerals derived from the stacked triad | `PluginEditor.cpp`, `romanNumeralForScaleDegree()` | `romanNumeralForScaleDegree()` |
 | Drop voicings | `PluginProcessor.cpp`, `applyChordVoicing()` | `applyChordVoicing()`, ported line for line |
 | Degree to MIDI notes | `PluginEditor.cpp`, `chordMidiNotesForClip()` | `chordMidiNotes()` |
+| The pad's per-cell controls: vertices, inversion edges, octave discs, hit order | `SpaceageCircleOfFifths.h`, `NumeralPadComponent` | `chord-honeycomb.js`, same function names |
 
 The **order of `QUALITIES` and `SCALES` is a contract**, not a preference: a saved chord carries
 the index, not the name. Inserting a scale in the middle on either side silently changes what
 every stored chord means.
 
-`CircleOfFifthsComponent` and `NumeralPadComponent` were not ported. They are JUCE views; the
+`CircleOfFifthsComponent` was not ported and `NumeralPadComponent`'s *drawing* was not either.
+They are JUCE views; its geometry, though, has come across in three pieces - the stagger, the cell
+shape and now the controls carried on each cell. The
 wheel was first rebuilt as SVG and then replaced by a honeycomb, `dist/js/chord-honeycomb.js`:
 one hexagon per scale degree, using NumeralPadComponent's stagger. A circle of fifths can only
 describe a major key; a honeycomb has one cell per degree, so it works for all fifty scales.

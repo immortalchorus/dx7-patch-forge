@@ -526,3 +526,26 @@ body.doc .shell { max-width: 820px; }
 .doc-steps h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; color: var(--text); }
 .doc-steps p { font-size: 14px; line-height: 1.7; color: var(--muted); max-width: 62ch; margin: 0; }
 body.doc header .status i { background: var(--orange-text); box-shadow: 0 0 10px var(--orange); }
+
+/* The controls carried on the selected chord's hexagon: four edges for the inversion, two discs
+   for the octave. The wide stroke on each edge is the target and is never seen; the thin one is
+   the mark. Only one cell has them at a time, so there is never a question about which chord an
+   edge belongs to. */
+.hctl .hit { stroke: transparent; stroke-linecap: round; cursor: pointer; }
+.hctl .mark { stroke: var(--line); stroke-width: 2.5; stroke-linecap: round; pointer-events: none;
+  transition: stroke .12s, stroke-width .12s; }
+.hinv:hover .mark { stroke: var(--blue); stroke-width: 3.5; }
+.hinv.on .mark { stroke: var(--orange-text); stroke-width: 4; }
+.hinv:focus-visible { outline: none; }
+.hinv:focus-visible .mark { stroke: var(--blue); stroke-width: 4.5; }
+
+.hoct { cursor: pointer; }
+.hoct circle { fill: var(--charcoal); stroke: var(--line); stroke-width: 1.25; transition: stroke .12s, fill .12s; }
+.hoct text { font: 11px var(--mono); fill: var(--muted); pointer-events: none; }
+.hoct:hover:not(.spent) circle { stroke: var(--blue); fill: #0091ff22; }
+.hoct:hover:not(.spent) text { fill: var(--text); }
+.hoct:focus-visible { outline: none; }
+.hoct:focus-visible circle { stroke: var(--blue); stroke-width: 2; }
+.hoct.spent { cursor: default; }
+.hoct.spent circle { stroke: var(--line-soft); }
+.hoct.spent text { fill: var(--line); }

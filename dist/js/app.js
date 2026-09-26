@@ -986,6 +986,10 @@ function drawHoneycomb(h) {
     pad: PAD,
     preferFlats: h.preferFlats,
     selected: stepChord(loop.pattern, lab.selected)?.degree ?? null,
+    // The selected chord itself, so its own cell can carry the inversion edges and octave discs
+    // and show where they stand. Null when nothing is selected, and then no cell has controls:
+    // an edge with no chord to act on would be a control that does nothing.
+    chord: stepChord(loop.pattern, lab.selected),
   });
 }
 
@@ -1023,17 +1027,50 @@ function drawChordLab() {
   drawChordLane();
 }
 
-// ---- the honeycomb: a click adds that degree to the progression and plays it
-$("#clHoneycomb").addEventListener("click", (e) => addFromHoneycomb(e.target.closest("[data-degree]")));
-// The segments are SVG groups with a button role, so Enter and Space are not free.
+// ---- the honeycomb
+//
+// A cell's body adds that degree to the progression and plays it. The selected chord's cell also
+// carries controls on four of its edges and two discs, and those are checked first: an edge sits
+// inside the body, so a click that lands on one must not also add a chord.
+$("#clHoneycomb").addEventListener("click", (e) => {
+  const control = e.target.closest?.("[data-control]");
+  if (control) return useCellControl(control);
+  addFromHoneycomb(e.target.closest("[data-degree]"));
+});
+// The cells and their controls are SVG groups with a button role, so Enter and Space are not free.
 $("#clHoneycomb").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " ") return;
-  const seg = e.target.closest?.("[data-degree]");
-  if (!seg) return;
+  const control = e.target.closest?.("[data-control]");
+  const seg = control ? null : e.target.closest?.("[data-degree]");
+  if (!control && !seg) return;
   e.preventDefault();
   e.stopPropagation(); // Space is also the transport; on a chord it means this chord.
-  addFromHoneycomb(seg);
+  if (control) useCellControl(control);
+  else addFromHoneycomb(seg);
 });
+
+/**
+ * An inversion edge or an octave disc on the selected chord's cell.
+ *
+ * They edit the selected chord and nothing else, which is what the panel beside the honeycomb
+ * does too: it is a second view of these two fields rather than a competing one, and both read
+ * the chord back after every change, so the two cannot disagree.
+ */
+function useCellControl(el) {
+  const chord = stepChord(loop.pattern, lab.selected);
+  if (!chord) return;
+  const value = Number(el.dataset.value);
+  if (el.dataset.control === "inversion") {
+    editSelected((c) => (c.inversion = value));
+  } else {
+    const next = Math.min(3, Math.max(-3, chord.registerOctaves + value));
+    if (next === chord.registerOctaves) return; // already as far as it goes
+    editSelected((c) => (c.registerOctaves = next));
+  }
+  // Put keyboard focus back on the control that moved: redrawing has just replaced the element
+  // it was on, and a control that loses focus when you use it cannot be used twice.
+  $(`#clHoneycomb [data-control="${el.dataset.control}"][data-value="${el.dataset.value}"]`)?.focus();
+}
 
 function addFromHoneycomb(seg) {
   if (!seg) return;
