@@ -84,14 +84,30 @@ export const TUTORIAL_STEPS = [
     },
   },
   {
+    id: "oncell",
+    target: "#clHoneycomb",
+    title: "Two of them are on the hexagon itself",
+    body:
+      "The selected chord's own cell carries the other two. Four of its six edges set the " +
+      "inversion and the two discs set the octave, so a chord can be voiced without leaving the " +
+      "shape you picked it from. They are the same Inversion and Register the panel shows - a " +
+      "second view of two fields, never a competing pair - and SpaceAge's own chord pad works " +
+      "this way, which is a good part of why the honeycomb is hexagons.",
+    run: (lab) => {
+      lab.selectNth(0);
+      lab.editChord({ inversion: 1 });
+    },
+  },
+  {
     id: "scales",
     target: "#clMode",
     title: "It is not only for major keys",
     body:
-      "Because the honeycomb is one cell per degree rather than a circle of fifths, it describes " +
-      "every scale OWL knows - five hexagons for a pentatonic, six for whole tone, eight for a " +
-      "diminished scale. Every chord still gets a real note name: C Phrygian Dominant reads C, D " +
-      "flat, E diminished, F minor, G diminished, A flat augmented, B flat minor.",
+      "Key sets the tonic and Scale sets what is built on it. Because the honeycomb is one cell " +
+      "per degree rather than a circle of fifths, it describes every scale OWL knows - five " +
+      "hexagons for a pentatonic, six for whole tone, eight for a diminished scale. Every chord " +
+      "still gets a real note name: C Phrygian Dominant reads C, D flat, E diminished, F minor, " +
+      "G diminished, A flat augmented, B flat minor.",
     run: (lab) => lab.setScale("Phrygian Dominant"),
   },
   {
@@ -135,6 +151,17 @@ export const TUTORIAL_STEPS = [
       lab.selectNth(0);
       lab.editChord({ voicing: 1 });
     },
+  },
+  {
+    id: "export",
+    target: "#midiExport",
+    title: "Take the progression with you",
+    body:
+      "The MIDI panel writes the chords out as a .mid file: the chords only, at the loop's tempo, " +
+      "each held exactly as long as you hear it. It re-encodes the notes the loop just played " +
+      "rather than working them out a second time, so the file and what you heard cannot " +
+      "disagree. Nothing needs to be plugged in for it. This tour will not press it for you - a " +
+      "tutorial should not leave files on your disk.",
   },
   {
     id: "end",
